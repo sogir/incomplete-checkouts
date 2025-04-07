@@ -12,6 +12,7 @@ add_action('admin_menu', function () {
 function render_abandoned_admin_page() {
     $nonce = wp_create_nonce("abandon_table_nonce");
     $search_term = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
+    $paged = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1; // Get the current page number
 
     echo '<div class="wrap">
         <h1>Abandoned Checkouts</h1>
@@ -29,9 +30,10 @@ function render_abandoned_admin_page() {
 
         <div id="abandoned-table-wrap">';
 
-    render_abandoned_table($search_term);
+    // Pass the current page number to the table rendering function
+    render_abandoned_table($search_term, $paged);
 
-    echo '</div></div>'; ?>
+    echo '</div></div>';?>
 
     <script>
     const abandon_nonce = '<?php echo $nonce; ?>';
@@ -58,28 +60,45 @@ function render_abandoned_admin_page() {
         });
     }
 
+
+
    
     </script>
+
 <?php }
 
-function render_abandoned_table($search = '') {
+function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) {
     $args = [
         'post_type' => 'abandoned_lead',
         'post_status' => 'publish',
-        'numberposts' => -1,
         'orderby' => 'date',
-        'order' => 'DESC'
+        'order' => 'DESC',
+        'posts_per_page' => $posts_per_page,
+        'paged' => $paged,
     ];
 
-    $leads = get_posts($args);
     if ($search) {
-        $search = strtolower($search);
-        $leads = array_filter($leads, function ($lead) use ($search) {
-            $name = strtolower(get_post_meta($lead->ID, 'first_name', true) . ' ' . get_post_meta($lead->ID, 'last_name', true));
-            $phone = strtolower(get_post_meta($lead->ID, 'phone', true));
-            return strpos($name, $search) !== false || strpos($phone, $search) !== false;
-        });
+        $args['meta_query'] = [
+            'relation' => 'OR',
+            [
+                'key' => 'first_name',
+                'value' => $search,
+                'compare' => 'LIKE',
+            ],
+            [
+                'key' => 'last_name',
+                'value' => $search,
+                'compare' => 'LIKE',
+            ],
+            [
+                'key' => 'phone',
+                'value' => $search,
+                'compare' => 'LIKE',
+            ],
+        ];
     }
+
+    $query = new WP_Query($args);
 
     echo '<table class="widefat striped">
         <thead>
@@ -97,11 +116,12 @@ function render_abandoned_table($search = '') {
         </thead>
         <tbody>';
 
-    if (empty($leads)) {
+    if (!$query->have_posts()) {
         echo '<tr><td colspan="10">No abandoned leads found.</td></tr>';
     } else {
-        foreach ($leads as $lead) {
-            $id = $lead->ID;
+        while ($query->have_posts()) {
+            $query->the_post();
+            $id = get_the_ID();
             $first = get_post_meta($id, 'first_name', true);
             $last = get_post_meta($id, 'last_name', true);
             $name = esc_html(trim("$first $last"));
@@ -113,7 +133,7 @@ function render_abandoned_table($search = '') {
             $products = esc_html(get_post_meta($id, 'products', true));
             $date = esc_html(get_post_meta($id, 'timestamp', true));
             $note = esc_textarea(get_post_meta($id, 'note', true));
-            $recovered = get_post_meta($id, 'recovered', true) ? '✅ Yes' : '❌ No';
+            $recovered = get_post_meta($id, 'recovered', true) ? '? Yes' : '? No';
 
             echo "<tr id='row-$id'>
                 <td>$name</td>
@@ -133,6 +153,21 @@ function render_abandoned_table($search = '') {
     }
 
     echo '</tbody></table>';
+
+    // Pagination links
+    $total_pages = $query->max_num_pages;
+    if ($total_pages > 1) {
+        echo '<div class="tablenav"><div class="tablenav-pages">';
+        echo paginate_links([
+            'base' => add_query_arg('paged', '%#%'),
+            'format' => '',
+            'current' => $paged,
+            'total' => $total_pages,
+        ]);
+        echo '</div></div>';
+    }
+
+    wp_reset_postdata();
 }
 
 // Export CSV
