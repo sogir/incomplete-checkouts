@@ -30,6 +30,39 @@ function render_abandoned_admin_page() {
 
         <div id="abandoned-table-wrap">';
 
+
+        // Add custom CSS for pagination
+    echo '<style>
+        .tablenav-pages {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .tablenav-pages a, .tablenav-pages span {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 0 5px;
+            border: 1px solid #007cba;
+            border-radius: 4px;
+            background-color: #007cba;
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .tablenav-pages a:hover {
+            background-color: #005a9c;
+            color: #fff;
+        }
+        .tablenav-pages .current {
+            background-color:rgb(209, 236, 255);
+            color:rgb(41, 133, 187);
+            font-weight: bold;
+            cursor: default;
+        }
+    </style>';
+
+
     // Pass the current page number to the table rendering function
     render_abandoned_table($search_term, $paged);
 
