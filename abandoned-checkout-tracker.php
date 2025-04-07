@@ -105,6 +105,19 @@ function act_save_abandoned_lead() {
     $addr = sanitize_text_field($_POST['address'] ?? '');
     $state = sanitize_text_field($_POST['state'] ?? '');
 
+    // Capture customer IP address
+    $ip_address = '';
+    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip_address = $_SERVER['HTTP_CLIENT_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ip_address = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    } else {
+        $ip_address = $_SERVER['REMOTE_ADDR'];
+    }
+
+    // Handle cases where multiple IPs are returned (e.g., via proxies)
+    $ip_address = explode(',', $ip_address)[0]; // Get the first IP
+
     $cart = WC()->cart ? WC()->cart->get_cart() : [];
     $products = [];
     foreach ($cart as $item) {
@@ -142,10 +155,12 @@ function act_save_abandoned_lead() {
         update_post_meta($post_id, 'products', $product_str);
         update_post_meta($post_id, 'subtotal', $subtotal);
         update_post_meta($post_id, 'timestamp', current_time('mysql'));
+        update_post_meta($post_id, 'ip_address', $ip_address); // Save IP address
     }
 
     wp_send_json_success('Saved');
 }
+
 
 // Mark lead as recovered on order placed
 add_action('woocommerce_checkout_order_processed', function ($order_id) {
