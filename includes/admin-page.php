@@ -121,7 +121,14 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
         'order' => 'DESC',
         'posts_per_page' => $posts_per_page,
         'paged' => $paged,
+        'meta_query' => [
+            [
+                'key' => 'recovered',
+                'compare' => 'NOT EXISTS', // Exclude leads with the "recovered" meta key
+            ],
+        ],
     ];
+    
 
     if ($search) {
         $args['meta_query'] = [
