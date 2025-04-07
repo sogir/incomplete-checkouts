@@ -89,77 +89,6 @@ add_action('woocommerce_after_checkout_form', function () {
 
 // Save abandoned lead
 add_action('wp_ajax_nopriv_save_abandoned_lead', 'act_save_abandoned_lead');
-// function act_save_abandoned_lead() {
-//     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_nonce')) {
-//         wp_send_json_error('Invalid nonce');
-//     }
-
-//     $phone = sanitize_text_field($_POST['phone'] ?? '');
-//     if (!preg_match('/^01[0-9]{9}$/', $phone)) {
-//         wp_send_json_error('Invalid phone format');
-//     }
-
-//     $first = sanitize_text_field($_POST['first_name'] ?? '');
-//     $last = sanitize_text_field($_POST['last_name'] ?? '');
-//     $addr = sanitize_text_field($_POST['address'] ?? '');
-//     $state = sanitize_text_field($_POST['state'] ?? '');
-
-//     // Capture customer IP address
-//     $ip_address = '';
-//     if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-//         $ip_address = $_SERVER['HTTP_CLIENT_IP'];
-//     } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-//         $ip_address = $_SERVER['HTTP_X_FORWARDED_FOR'];
-//     } else {
-//         $ip_address = $_SERVER['REMOTE_ADDR'];
-//     }
-
-//     // Handle cases where multiple IPs are returned (e.g., via proxies)
-//     $ip_address = explode(',', $ip_address)[0]; // Get the first IP
-//     $ip_address = filter_var($ip_address, FILTER_VALIDATE_IP); // Validate the IP address
-
-//     $cart = WC()->cart ? WC()->cart->get_cart() : [];
-//     $products = [];
-//     foreach ($cart as $item) {
-//         $products[] = $item['data']->get_name() . ' x' . $item['quantity'];
-//     }
-//     $product_str = implode(', ', $products);
-//     $subtotal = WC()->cart ? WC()->cart->get_subtotal() : 0.00;
-
-//     $existing = get_posts([
-//         'post_type' => 'abandoned_lead',
-//         'meta_key' => 'phone',
-//         'meta_value' => $phone,
-//         'numberposts' => 1
-//     ]);
-
-//     $allow_retrack = true;
-//     if (!empty($existing)) {
-//         $existing_time = strtotime(get_post_meta($existing[0]->ID, 'timestamp', true));
-//         $diff = time() - $existing_time;
-//         $allow_retrack = ($diff > 600); // 10 minutes
-//     }
-
-//     if (empty($existing) || $allow_retrack) {
-//         $post_id = wp_insert_post([
-//             'post_type' => 'abandoned_lead',
-//             'post_title' => "$first $last - $phone",
-//             'post_status' => 'publish'
-//         ]);
-
-//         update_post_meta($post_id, 'phone', $phone);
-//         update_post_meta($post_id, 'first_name', $first);
-//         update_post_meta($post_id, 'last_name', $last);
-//         update_post_meta($post_id, 'address', $addr);
-//         update_post_meta($post_id, 'state', $state);
-//         update_post_meta($post_id, 'products', $product_str);
-//         update_post_meta($post_id, 'subtotal', $subtotal);
-//         update_post_meta($post_id, 'timestamp', current_time('mysql'));
-//         update_post_meta($post_id, 'ip_address', $ip_address); // Save IP address
-//     }
-
-//     wp_send_json_success('Saved');
-// }
 
 function act_save_abandoned_lead() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_nonce')) {
@@ -304,3 +233,28 @@ function njengah_custom_checkout_field_process() {
         wc_add_notice("Mobile Number Must be at least 11 digit and start with 01", 'error');
     }
 }
+
+
+add_action('wp_ajax_update_abandoned_status', function () {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_note_nonce')) {
+        wp_send_json_error(['reason' => 'Invalid nonce']);
+    }
+
+    $id = intval($_POST['lead_id'] ?? 0);
+    $status = sanitize_text_field($_POST['status'] ?? '');
+
+    if (!$id || get_post_type($id) !== 'abandoned_lead') {
+        wp_send_json_error(['reason' => 'Invalid ID or post type']);
+    }
+
+    if (!in_array($status, ['❌', '✅'])) {
+        wp_send_json_error(['reason' => 'Invalid status value']);
+    }
+
+    $updated = update_post_meta($id, 'status', $status);
+    if (!$updated) {
+        wp_send_json_error(['reason' => 'Failed to update post meta']);
+    }
+
+    wp_send_json_success(['updated' => $updated]);
+});
