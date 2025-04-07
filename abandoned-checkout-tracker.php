@@ -27,54 +27,63 @@ add_action('init', function () {
 add_action('woocommerce_after_checkout_form', function () {
     ?>
     <script type="text/javascript">
-    jQuery(document).ready(function ($) {
-        let timer;
-        let lastData = {};
-        let formData = {};
+jQuery(document).ready(function ($) {
+    let timer;
+    let lastData = {};
+    let formData = {};
 
-        function isValidPhone(phone) {
-            return /^01[0-9]{9}$/.test(phone);
-        }
+    function isValidPhone(phone) {
+        return /^01[0-9]{9}$/.test(phone);
+    }
 
-        function getData() {
-            return {
-                phone: $('#billing_phone').val(),
-                first_name: $('#billing_first_name').val(),
-                last_name: $('#billing_last_name').val(),
-                address: $('#billing_address_1').val(),
-                state: $('#billing_state').val()
-            };
-        }
+    function getData() {
+        return {
+            phone: $('#billing_phone').val(),
+            first_name: $('#billing_first_name').val(),
+            last_name: $('#billing_last_name').val(),
+            address: $('#billing_address_1').val(),
+            state: $('#billing_state').val()
+        };
+    }
 
-        function sendData(data) {
-            $.post('<?php echo admin_url('admin-ajax.php'); ?>', {
-                action: 'save_abandoned_lead',
-                nonce: '<?php echo wp_create_nonce('abandon_nonce'); ?>',
-                ...data
-            });
-        }
-
-        $('#billing_phone, #billing_first_name, #billing_last_name, #billing_address_1, #billing_state').on('change keyup', function () {
-            clearTimeout(timer);
-            timer = setTimeout(function () {
-                const data = getData();
-
-                if (!isValidPhone(data.phone)) return;
-
-                if (JSON.stringify(data) === JSON.stringify(lastData)) return;
-
-                lastData = data;
-                formData = data; // Store the latest data for batching
-            }, 1500);
+    function sendData(data) {
+        $.post('<?php echo admin_url('admin-ajax.php'); ?>', {
+            action: 'save_abandoned_lead',
+            nonce: '<?php echo wp_create_nonce('abandon_nonce'); ?>',
+            ...data
         });
+    }
 
-        // Send data when the user leaves the page
-        $(window).on('beforeunload', function () {
-            if (formData.phone && isValidPhone(formData.phone)) {
-                sendData(formData);
-            }
-        });
+    // Capture data on field change
+    $('#billing_phone, #billing_first_name, #billing_last_name, #billing_address_1, #billing_state').on('change keyup', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            const data = getData();
+
+            if (!isValidPhone(data.phone)) return;
+
+            if (JSON.stringify(data) === JSON.stringify(lastData)) return;
+
+            lastData = data;
+            formData = data; // Store the latest data for periodic saving
+        }, 1500);
     });
+
+    // Periodic data saving (every 30 seconds)
+    setInterval(function () {
+        if (formData.phone && isValidPhone(formData.phone)) {
+            sendData(formData);
+        }
+    }, 30000); // 30 seconds
+
+    // Send data when the user leaves the page
+    $(window).on('beforeunload', function () {
+        if (formData.phone && isValidPhone(formData.phone)) {
+            sendData(formData);
+        }
+    });
+});
+
     </script>
     <?php
 });
