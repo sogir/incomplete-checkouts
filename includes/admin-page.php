@@ -1,6 +1,4 @@
 <?php
-// File: includes/admin-page.php
-
 if (!defined('ABSPATH')) exit;
 
 // Admin menu
@@ -10,13 +8,12 @@ add_action('admin_menu', function () {
 
 // Admin page content
 function render_abandoned_admin_page() {
-    $nonce = wp_create_nonce("abandon_table_nonce");
+    $nonce = wp_create_nonce("abandon_note_nonce");
     $search_term = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
-    $paged = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1; // Get the current page number
+    $paged = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
 
     echo '<div class="wrap">
         <h1>Abandoned Checkouts</h1>
-        
         <form method="get" style="margin-bottom: 10px;">
             <input type="hidden" name="page" value="abandoned-checkouts">
             <input type="text" name="s" value="' . esc_attr($search_term) . '" placeholder="Search by name or phone" style="padding: 5px; width: 300px;" />
@@ -30,109 +27,91 @@ function render_abandoned_admin_page() {
 
         <div id="abandoned-table-wrap">';
 
-
-        // Add custom CSS for pagination
+         // Add custom CSS for pagination
     echo '<style>
-        .tablenav-pages {
-            display: flex;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .tablenav-pages a, .tablenav-pages span {
-            display: inline-block;
-            padding: 8px 12px;
-            margin: 0 5px;
-            border: 1px solid #007cba;
-            border-radius: 4px;
-            background-color: #007cba;
-            color: #fff;
-            text-decoration: none;
-            font-size: 14px;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-        .tablenav-pages a:hover {
-            background-color: #005a9c;
-            color: #fff;
-        }
-        .tablenav-pages .current {
-            background-color:rgb(209, 236, 255);
-            color:rgb(41, 133, 187);
-            font-weight: bold;
-            cursor: default;
-        }
-    </style>';
+    .tablenav-pages {
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+    }
+    .tablenav-pages a, .tablenav-pages span {
+        display: inline-block;
+        padding: 8px 12px;
+        margin: 0 5px;
+        border: 1px solid #007cba;
+        border-radius: 4px;
+        background-color: #007cba;
+        color: #fff;
+        text-decoration: none;
+        font-size: 14px;
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    .tablenav-pages a:hover {
+        background-color: #005a9c;
+        color: #fff;
+    }
+    .tablenav-pages .current {
+        background-color:rgb(209, 236, 255);
+        color:rgb(41, 133, 187);
+        font-weight: bold;
+        cursor: default;
+    }
+</style>';
 
-
-    // Pass the current page number to the table rendering function
     render_abandoned_table($search_term, $paged);
 
-    echo '</div></div>';?>
+    echo '</div></div>';
 
-    <script>
-    const abandon_nonce = '<?php echo $nonce; ?>';
-
-    // function saveNote(id) {
-    //     let note = document.getElementById('note-' + id).value;
-    //     fetch(ajaxurl, {
-    //         method: 'POST',
-    //         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    //         body: new URLSearchParams({
-    //             action: 'update_abandoned_note',
-    //             lead_id: id,
-    //             note: note,
-    //             nonce: '<?php echo wp_create_nonce("abandon_note_nonce"); ?>'
-    //         })
-    //     })
-    //     .then(res => res.json())
-    //     .then(data => {
-    //         if (data.success) {
-    //             alert("Note saved!");
-    //         } else {
-    //             alert("Failed to save: " + (data.data?.reason || 'Unknown error'));
-    //         }
-    //     });
-    // }
+    echo '<script>
+    const abandon_nonce = "' . $nonce . '";
 
     function saveNote(id) {
-    let note = document.getElementById('note-' + id).value;
-    let saveButton = document.querySelector('#row-' + id + ' .button-small');
+        let note = document.getElementById("note-" + id).value;
+        let saveButton = document.querySelector("#row-" + id + " .button-small");
+        let successMessage = document.getElementById("success-message-" + id);
 
-    // Disable the button while saving
-    saveButton.disabled = true;
-    saveButton.textContent = 'Saving...';
-
-    fetch(ajaxurl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            action: 'update_abandoned_note',
-            lead_id: id,
-            note: note,
-            nonce: '<?php echo wp_create_nonce("abandon_note_nonce"); ?>'
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            alert("Note saved!");
-        } else {
-            alert("Failed to save: " + (data.data?.reason || 'Unknown error'));
+        if (!successMessage) {
+            successMessage = document.createElement("span");
+            successMessage.id = "success-message-" + id;
+            successMessage.style.marginLeft = "10px";
+            successMessage.style.color = "green";
+            successMessage.style.fontSize = "12px";
+            saveButton.parentNode.appendChild(successMessage);
         }
-    })
-    .finally(() => {
-        // Re-enable the button
-        saveButton.disabled = false;
-        saveButton.textContent = 'Update';
-    });
+
+        saveButton.disabled = true;
+        saveButton.textContent = "Saving...";
+
+        fetch(ajaxurl, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                action: "update_abandoned_note",
+                lead_id: id,
+                note: note,
+                nonce: abandon_nonce
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                successMessage.textContent = "Note saved ✅";
+            } else {
+                successMessage.textContent = "Failed to save ❌";
+                successMessage.style.color = "red";
+                console.error(data.data?.reason || "Unknown error");
+            }
+        })
+        .finally(() => {
+            saveButton.disabled = false;
+            saveButton.textContent = "Update";
+            setTimeout(() => {
+                successMessage.textContent = "";
+            }, 1000);
+        });
+    }
+    </script>';
 }
-
-
-
-
-   
-    </script>
-
-<?php }
 
 function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) {
     $args = [
@@ -174,7 +153,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 <th>Phone</th>
                 <th>Address</th>
                 <th>State</th>
-                <th>IP Address</th> <!-- New column -->
+                <th>IP Address</th>
                 <th>Subtotal</th>
                 <th>Products</th>
                 <th>Date</th>
@@ -195,16 +174,11 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             $name = esc_html(trim("$first $last"));
             $phone = esc_html(get_post_meta($id, 'phone', true));
             $addr = esc_html(get_post_meta($id, 'address', true));
-
-            // Convert state code to state name
             $state_code = get_post_meta($id, 'state', true);
-            $country_code = 'BD'; // Replace with your store's default country code
+            $country_code = 'BD';
             $states = WC()->countries->get_states($country_code);
-            // $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
-            $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown'; // Fallback to "Unknown"
-
-
-            $ip_address = esc_html(get_post_meta($id, 'ip_address', true)); // Retrieve IP address
+            $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
+            $ip_address = esc_html(get_post_meta($id, 'ip_address', true));
             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
             $subtotal = esc_html(number_format($subtotal_raw, 2));
             $products = esc_html(get_post_meta($id, 'products', true));
@@ -217,7 +191,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 <td>$phone</td>
                 <td>$addr</td>
                 <td>$state</td>
-                <td>$ip_address</td> <!-- Display IP address -->
+                <td>$ip_address</td>
                 <td>$subtotal</td>
                 <td>$products</td>
                 <td>$date</td>
@@ -232,7 +206,6 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     echo '</tbody></table>';
 
-    // Pagination links
     $total_pages = $query->max_num_pages;
     if ($total_pages > 1) {
         echo '<div class="tablenav"><div class="tablenav-pages">';
@@ -247,7 +220,6 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     wp_reset_postdata();
 }
-
 
 // Export CSV
 add_action('admin_post_export_abandoned_checkouts', function () {
@@ -269,7 +241,7 @@ add_action('admin_post_export_abandoned_checkouts', function () {
         $state_code = get_post_meta($id, 'state', true);
         $country_code = 'BD'; // Replace with your store's default country code
         $states = WC()->countries->get_states($country_code);
-        $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
+        $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
 
         fputcsv($output, [
             get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
