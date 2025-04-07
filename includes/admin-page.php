@@ -127,7 +127,12 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             $name = esc_html(trim("$first $last"));
             $phone = esc_html(get_post_meta($id, 'phone', true));
             $addr = esc_html(get_post_meta($id, 'address', true));
-            $state = esc_html(get_post_meta($id, 'state', true));
+            // $state = esc_html(get_post_meta($id, 'state', true));
+            $state_code = get_post_meta($id, 'state', true);
+            $country_code = 'BD'; // Replace this with the default country code for your store
+            $states = WC()->countries->get_states($country_code);
+            $state = isset($states[$state_code]) ? $states[$state_code] : $state_code; // Get the state name or fallback to the code
+
             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
             $subtotal = esc_html(number_format($subtotal_raw, 2));
             $products = esc_html(get_post_meta($id, 'products', true));
@@ -169,6 +174,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     wp_reset_postdata();
 }
+
 
 // Export CSV
 add_action('admin_post_export_abandoned_checkouts', function () {
