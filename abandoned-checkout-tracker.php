@@ -234,7 +234,7 @@ function njengah_custom_checkout_field_process() {
     }
 }
 
-
+// status toggle button php ajax functionality
 add_action('wp_ajax_update_abandoned_status', function () {
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_note_nonce')) {
         wp_send_json_error(['reason' => 'Invalid nonce']);
@@ -257,4 +257,24 @@ add_action('wp_ajax_update_abandoned_status', function () {
     }
 
     wp_send_json_success(['updated' => $updated]);
+});
+
+// Delete button php ajax functionality
+add_action('wp_ajax_delete_abandoned_lead', function () {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_note_nonce')) {
+        wp_send_json_error(['reason' => 'Invalid nonce']);
+    }
+
+    $id = intval($_POST['lead_id'] ?? 0);
+
+    if (!$id || get_post_type($id) !== 'abandoned_lead') {
+        wp_send_json_error(['reason' => 'Invalid ID or post type']);
+    }
+
+    $deleted = wp_delete_post($id, true); // Force delete the post
+    if (!$deleted) {
+        wp_send_json_error(['reason' => 'Failed to delete lead']);
+    }
+
+    wp_send_json_success(['deleted' => $deleted]);
 });
