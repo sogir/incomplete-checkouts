@@ -107,6 +107,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 <th>Phone</th>
                 <th>Address</th>
                 <th>State</th>
+                <th>IP Address</th> <!-- New column -->
                 <th>Subtotal</th>
                 <th>Products</th>
                 <th>Date</th>
@@ -127,24 +128,27 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             $name = esc_html(trim("$first $last"));
             $phone = esc_html(get_post_meta($id, 'phone', true));
             $addr = esc_html(get_post_meta($id, 'address', true));
-            // $state = esc_html(get_post_meta($id, 'state', true));
-            $state_code = get_post_meta($id, 'state', true);
-            $country_code = 'BD'; // Replace this with the default country code for your store
-            $states = WC()->countries->get_states($country_code);
-            $state = isset($states[$state_code]) ? $states[$state_code] : $state_code; // Get the state name or fallback to the code
 
+            // Convert state code to state name
+            $state_code = get_post_meta($id, 'state', true);
+            $country_code = 'BD'; // Replace with your store's default country code
+            $states = WC()->countries->get_states($country_code);
+            $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
+
+            $ip_address = esc_html(get_post_meta($id, 'ip_address', true)); // Retrieve IP address
             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
             $subtotal = esc_html(number_format($subtotal_raw, 2));
             $products = esc_html(get_post_meta($id, 'products', true));
             $date = esc_html(get_post_meta($id, 'timestamp', true));
             $note = esc_textarea(get_post_meta($id, 'note', true));
-            $recovered = get_post_meta($id, 'recovered', true) ? '? Yes' : '? No';
+            $recovered = get_post_meta($id, 'recovered', true) ? '✅ Yes' : '❌ No';
 
             echo "<tr id='row-$id'>
                 <td>$name</td>
                 <td>$phone</td>
                 <td>$addr</td>
                 <td>$state</td>
+                <td>$ip_address</td> <!-- Display IP address -->
                 <td>$subtotal</td>
                 <td>$products</td>
                 <td>$date</td>
