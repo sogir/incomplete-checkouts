@@ -71,27 +71,61 @@ function render_abandoned_admin_page() {
     <script>
     const abandon_nonce = '<?php echo $nonce; ?>';
 
+    // function saveNote(id) {
+    //     let note = document.getElementById('note-' + id).value;
+    //     fetch(ajaxurl, {
+    //         method: 'POST',
+    //         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    //         body: new URLSearchParams({
+    //             action: 'update_abandoned_note',
+    //             lead_id: id,
+    //             note: note,
+    //             nonce: '<?php echo wp_create_nonce("abandon_note_nonce"); ?>'
+    //         })
+    //     })
+    //     .then(res => res.json())
+    //     .then(data => {
+    //         if (data.success) {
+    //             alert("Note saved!");
+    //         } else {
+    //             alert("Failed to save: " + (data.data?.reason || 'Unknown error'));
+    //         }
+    //     });
+    // }
+
     function saveNote(id) {
-        let note = document.getElementById('note-' + id).value;
-        fetch(ajaxurl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                action: 'update_abandoned_note',
-                lead_id: id,
-                note: note,
-                nonce: '<?php echo wp_create_nonce("abandon_note_nonce"); ?>'
-            })
+    let note = document.getElementById('note-' + id).value;
+    let saveButton = document.querySelector('#row-' + id + ' .button-small');
+
+    // Disable the button while saving
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving...';
+
+    fetch(ajaxurl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            action: 'update_abandoned_note',
+            lead_id: id,
+            note: note,
+            nonce: '<?php echo wp_create_nonce("abandon_note_nonce"); ?>'
         })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert("Note saved!");
-            } else {
-                alert("Failed to save: " + (data.data?.reason || 'Unknown error'));
-            }
-        });
-    }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Note saved!");
+        } else {
+            alert("Failed to save: " + (data.data?.reason || 'Unknown error'));
+        }
+    })
+    .finally(() => {
+        // Re-enable the button
+        saveButton.disabled = false;
+        saveButton.textContent = 'Update';
+    });
+}
+
 
 
 
@@ -166,7 +200,9 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             $state_code = get_post_meta($id, 'state', true);
             $country_code = 'BD'; // Replace with your store's default country code
             $states = WC()->countries->get_states($country_code);
-            $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
+            // $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
+            $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown'; // Fallback to "Unknown"
+
 
             $ip_address = esc_html(get_post_meta($id, 'ip_address', true)); // Retrieve IP address
             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
@@ -224,15 +260,23 @@ add_action('admin_post_export_abandoned_checkouts', function () {
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="abandoned-checkouts.csv"');
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Name', 'Phone', 'Address', 'State', 'Subtotal', 'Products', 'Date', 'Recovered', 'Note']);
+    fputcsv($output, ['Name', 'Phone', 'Address', 'State', 'IP Address', 'Subtotal', 'Products', 'Date', 'Recovered', 'Note']);
 
     foreach ($leads as $lead) {
         $id = $lead->ID;
+
+        // Convert state code to state name
+        $state_code = get_post_meta($id, 'state', true);
+        $country_code = 'BD'; // Replace with your store's default country code
+        $states = WC()->countries->get_states($country_code);
+        $state = isset($states[$state_code]) ? $states[$state_code] : $state_code;
+
         fputcsv($output, [
             get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
             get_post_meta($id, 'phone', true),
             get_post_meta($id, 'address', true),
-            get_post_meta($id, 'state', true),
+            $state, // Use the readable state name
+            get_post_meta($id, 'ip_address', true), // Include IP address
             get_post_meta($id, 'subtotal', true),
             get_post_meta($id, 'products', true),
             get_post_meta($id, 'timestamp', true),
