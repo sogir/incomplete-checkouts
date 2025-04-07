@@ -143,18 +143,67 @@ function render_abandoned_admin_page() {
     });
 }
 
+    // function saveNote(id) {
+    //     let note = document.getElementById("note-" + id).value;
+    //     let saveButton = document.querySelector("#row-" + id + " .button-small");
+    //     let successMessage = document.getElementById("success-message-" + id);
+
+    //     if (!successMessage) {
+    //         successMessage = document.createElement("span");
+    //         successMessage.id = "success-message-" + id;
+    //         successMessage.style.marginLeft = "10px";
+    //         successMessage.style.color = "green";
+    //         successMessage.style.fontSize = "12px";
+    //         saveButton.parentNode.appendChild(successMessage);
+    //     }
+
+    //     // saveButton.disabled = true;
+    //     // saveButton.textContent = "Saving...";
+
+    //     fetch(ajaxurl, {
+    //         method: "POST",
+    //         headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    //         body: new URLSearchParams({
+    //             action: "update_abandoned_note",
+    //             lead_id: id,
+    //             note: note,
+    //             nonce: abandon_nonce
+    //         })
+    //     })
+    //     .then(res => res.json())
+    //     .then(data => {
+    //         if (data.success) {
+    //             successMessage.textContent = "Note saved ✅";
+    //             successMessage.style.color = "green";
+    //         } else {
+    //             successMessage.textContent = "Failed to save ❌";
+    //             successMessage.style.color = "red";
+    //             console.error(data.data?.reason || "Unknown error");
+    //         }
+    //     })
+    //     .finally(() => {
+    //         saveButton.disabled = false;
+    //         saveButton.textContent = "Update";
+    //         setTimeout(() => {
+    //             successMessage.textContent = "";
+    //         }, 1000);
+    //     });
+    // }
+
     function saveNote(id) {
         let note = document.getElementById("note-" + id).value;
-        let saveButton = document.querySelector("#row-" + id + " .button-small");
+        let saveButton = document.querySelector("#row-" + id + " .button-save-note");
+        let noteBox = document.getElementById("note-" + id); // Reference to the note textarea
         let successMessage = document.getElementById("success-message-" + id);
 
+        // If the success message doesnt exist, create it
         if (!successMessage) {
-            successMessage = document.createElement("span");
+            successMessage = document.createElement("div");
             successMessage.id = "success-message-" + id;
-            successMessage.style.marginLeft = "10px";
+            successMessage.style.marginTop = "5px"; // Add spacing between the note box and the message
             successMessage.style.color = "green";
             successMessage.style.fontSize = "12px";
-            saveButton.parentNode.appendChild(successMessage);
+            noteBox.parentNode.appendChild(successMessage); // Append the message beneath the note box
         }
 
         saveButton.disabled = true;
@@ -170,24 +219,29 @@ function render_abandoned_admin_page() {
                 nonce: abandon_nonce
             })
         })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                successMessage.textContent = "Note saved ✅";
-            } else {
-                successMessage.textContent = "Failed to save ❌";
-                successMessage.style.color = "red";
-                console.error(data.data?.reason || "Unknown error");
-            }
-        })
-        .finally(() => {
-            saveButton.disabled = false;
-            saveButton.textContent = "Update";
-            setTimeout(() => {
-                successMessage.textContent = "";
-            }, 1000);
-        });
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    successMessage.textContent = "Note saved ✅";
+                    successMessage.style.color = "green";
+                } else {
+                    successMessage.textContent = "Failed to save ❌";
+                    successMessage.style.color = "red";
+                    console.error(data.data?.reason || "Unknown error");
+                }
+            })
+            .finally(() => {
+                saveButton.disabled = false;
+                saveButton.textContent = "Update";
+
+                // Clear the success message after 2 seconds
+                setTimeout(() => {
+                    successMessage.textContent = "";
+                }, 1500);
+            });
     }
+
+    
     </script>';
 }
 
@@ -282,7 +336,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 </td>
                 <td>
                     <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
-                    <button class='button button-small' onclick='saveNote($id)'>Update</button>
+                    <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
                 </td>
             </tr>";
         }
@@ -304,47 +358,6 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     wp_reset_postdata();
 }
-
-
-// // Export CSV
-// add_action('admin_post_export_abandoned_checkouts', function () {
-//     $leads = get_posts([
-//         'post_type' => 'abandoned_lead',
-//         'post_status' => 'publish',
-//         'numberposts' => -1
-//     ]);
-
-//     header('Content-Type: text/csv');
-//     header('Content-Disposition: attachment; filename="abandoned-checkouts.csv"');
-//     $output = fopen('php://output', 'w');
-//     fputcsv($output, ['Name', 'Phone', 'Address', 'State', 'IP Address', 'Subtotal', 'Products', 'Date', 'Recovered', 'Note']);
-
-//     foreach ($leads as $lead) {
-//         $id = $lead->ID;
-
-//         // Convert state code to state name
-//         $state_code = get_post_meta($id, 'state', true);
-//         $country_code = 'BD'; // Replace with your store's default country code
-//         $states = WC()->countries->get_states($country_code);
-//         $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
-
-//         fputcsv($output, [
-//             get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
-//             get_post_meta($id, 'phone', true),
-//             get_post_meta($id, 'address', true),
-//             $state, // Use the readable state name
-//             get_post_meta($id, 'ip_address', true), // Include IP address
-//             get_post_meta($id, 'subtotal', true),
-//             get_post_meta($id, 'products', true),
-//             get_post_meta($id, 'timestamp', true),
-//             get_post_meta($id, 'recovered', true) ? 'Yes' : 'No',
-//             get_post_meta($id, 'note', true)
-//         ]);
-//     }
-
-//     fclose($output);
-//     exit;
-// });
 
 
 // Export CSV
