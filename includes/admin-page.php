@@ -27,7 +27,8 @@ function render_abandoned_admin_page() {
 
         <div id="abandoned-table-wrap">';
 
-         // Add custom CSS for pagination
+
+        // Add custom CSS for pagination and hover effects
     echo '<style>
     .tablenav-pages {
         display: flex;
@@ -51,19 +52,64 @@ function render_abandoned_admin_page() {
         color: #fff;
     }
     .tablenav-pages .current {
-        background-color:rgb(209, 236, 255);
-        color:rgb(41, 133, 187);
+        background-color: rgb(209, 236, 255);
+        color: rgb(41, 133, 187);
         font-weight: bold;
         cursor: default;
     }
-</style>';
 
+    /* Hide toggle button by default */
+    .status-toggle {
+        display: none;
+    }
+
+    /* Show toggle button on row hover */
+    tr:hover .status-toggle {
+        display: inline-block;
+    }
+    </style>';
+
+    // Render the abandoned leads table
     render_abandoned_table($search_term, $paged);
 
     echo '</div></div>';
 
+    // Add the JavaScript snippet for handling status updates
     echo '<script>
     const abandon_nonce = "' . $nonce . '";
+
+    function updateStatus(id) {
+        let statusElement = document.getElementById("status-" + id);
+        let currentStatus = statusElement.textContent.trim();
+        let newStatus = currentStatus === "❌" ? "✅" : "❌";
+
+        let updateButton = document.querySelector("#row-" + id + " .button-small");
+        updateButton.disabled = true;
+        updateButton.textContent = "Updating...";
+
+        fetch(ajaxurl, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                action: "update_abandoned_status",
+                lead_id: id,
+                status: newStatus,
+                nonce: abandon_nonce
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                statusElement.textContent = newStatus;
+            } else {
+                console.error(data.data?.reason || "Unknown error");
+            }
+        })
+        .finally(() => {
+            updateButton.disabled = false;
+            updateButton.textContent = "Toggle";
+        });
+    }
 
     function saveNote(id) {
         let note = document.getElementById("note-" + id).value;
@@ -113,6 +159,7 @@ function render_abandoned_admin_page() {
     </script>';
 }
 
+
 function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) {
     $args = [
         'post_type' => 'abandoned_lead',
@@ -121,14 +168,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
         'order' => 'DESC',
         'posts_per_page' => $posts_per_page,
         'paged' => $paged,
-        'meta_query' => [
-            [
-                'key' => 'recovered',
-                'compare' => 'NOT EXISTS', // Exclude leads with the "recovered" meta key
-            ],
-        ],
     ];
-    
 
     if ($search) {
         $args['meta_query'] = [
@@ -156,6 +196,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
     echo '<table class="widefat striped">
         <thead>
             <tr>
+                <th>Date</th>
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Address</th>
@@ -163,8 +204,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 <th>IP Address</th>
                 <th>Subtotal</th>
                 <th>Products</th>
-                <th>Date</th>
-                <th>Recovered?</th>
+                <th>Status</th>
                 <th>Note</th>
             </tr>
         </thead>
@@ -191,9 +231,10 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             $products = esc_html(get_post_meta($id, 'products', true));
             $date = esc_html(get_post_meta($id, 'timestamp', true));
             $note = esc_textarea(get_post_meta($id, 'note', true));
-            $recovered = get_post_meta($id, 'recovered', true) ? '✅ Yes' : '❌ No';
+            $status = get_post_meta($id, 'status', true) === '✅' ? '✅' : '❌';
 
             echo "<tr id='row-$id'>
+                <td>$date</td>
                 <td>$name</td>
                 <td>$phone</td>
                 <td>$addr</td>
@@ -201,8 +242,10 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
                 <td>$ip_address</td>
                 <td>$subtotal</td>
                 <td>$products</td>
-                <td>$date</td>
-                <td>$recovered</td>
+                <td>
+                    <span id='status-$id'>$status</span>
+                    <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
+                </td>
                 <td>
                     <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
                     <button class='button button-small' onclick='saveNote($id)'>Update</button>
@@ -227,6 +270,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     wp_reset_postdata();
 }
+
 
 // Export CSV
 add_action('admin_post_export_abandoned_checkouts', function () {
