@@ -105,6 +105,19 @@ function act_save_abandoned_lead() {
     $addr = sanitize_text_field($_POST['address'] ?? '');
     $state = sanitize_text_field($_POST['state'] ?? '');
 
+    // // Capture customer IP address
+    // $ip_address = '';
+    // if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+    //     $ip_address = $_SERVER['HTTP_CLIENT_IP'];
+    // } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+    //     $ip_address = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    // } else {
+    //     $ip_address = $_SERVER['REMOTE_ADDR'];
+    // }
+
+    // // Handle cases where multiple IPs are returned (e.g., via proxies)
+    // $ip_address = explode(',', $ip_address)[0]; // Get the first IP
+
     // Capture customer IP address
     $ip_address = '';
     if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
@@ -117,6 +130,8 @@ function act_save_abandoned_lead() {
 
     // Handle cases where multiple IPs are returned (e.g., via proxies)
     $ip_address = explode(',', $ip_address)[0]; // Get the first IP
+    $ip_address = filter_var($ip_address, FILTER_VALIDATE_IP); // Validate the IP address
+
 
     $cart = WC()->cart ? WC()->cart->get_cart() : [];
     $products = [];
