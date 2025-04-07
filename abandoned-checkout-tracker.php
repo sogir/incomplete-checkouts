@@ -181,13 +181,11 @@ add_action('wp_ajax_update_abandoned_note', function () {
 
 
 // Limit WooCommerce phone field to 11 digits number
-add_action('woocommerce_checkout_process', 'limited_custom_checkout_field_process');
+add_action('woocommerce_checkout_process', 'njengah_custom_checkout_field_process');
 
-function limited_custom_checkout_field_process() {
+function njengah_custom_checkout_field_process() {
     $phone = isset($_POST['billing_phone']) ? trim($_POST['billing_phone']) : '';
     if ($phone && !preg_match('/^01[0-9]{9}$/', $phone)) {
-        wc_add_notice("মোবইল নাম্বর ভুল হয়েছে ১১ ডিিটের সঠিক নম্বা িন।", 'error');
+        wc_add_notice("Mobile Number Must be at least 11 digit and start with 01", 'error');
     }
 }
-
-
