@@ -27,63 +27,62 @@ add_action('init', function () {
 add_action('woocommerce_after_checkout_form', function () {
     ?>
     <script type="text/javascript">
-jQuery(document).ready(function ($) {
-    let timer;
-    let lastData = {};
-    let formData = {};
+    jQuery(document).ready(function ($) {
+        let timer;
+        let lastData = {};
+        let formData = {};
 
-    function isValidPhone(phone) {
-        return /^01[0-9]{9}$/.test(phone);
-    }
+        function isValidPhone(phone) {
+            return /^01[0-9]{9}$/.test(phone);
+        }
 
-    function getData() {
-        return {
-            phone: $('#billing_phone').val(),
-            first_name: $('#billing_first_name').val(),
-            last_name: $('#billing_last_name').val(),
-            address: $('#billing_address_1').val(),
-            state: $('#billing_state').val()
-        };
-    }
+        function getData() {
+            return {
+                phone: $('#billing_phone').val(),
+                first_name: $('#billing_first_name').val(),
+                last_name: $('#billing_last_name').val(),
+                address: $('#billing_address_1').val(),
+                state: $('#billing_state').val()
+            };
+        }
 
-    function sendData(data) {
-        $.post('<?php echo admin_url('admin-ajax.php'); ?>', {
-            action: 'save_abandoned_lead',
-            nonce: '<?php echo wp_create_nonce('abandon_nonce'); ?>',
-            ...data
+        function sendData(data) {
+            $.post('<?php echo admin_url('admin-ajax.php'); ?>', {
+                action: 'save_abandoned_lead',
+                nonce: '<?php echo wp_create_nonce('abandon_nonce'); ?>',
+                ...data
+            });
+        }
+
+        // Capture data on field change
+        $('#billing_phone, #billing_first_name, #billing_last_name, #billing_address_1, #billing_state').on('change keyup', function () {
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                const data = getData();
+
+                if (!isValidPhone(data.phone)) return;
+
+                if (JSON.stringify(data) === JSON.stringify(lastData)) return;
+
+                lastData = data;
+                formData = data; // Store the latest data for periodic saving
+            }, 1500);
         });
-    }
 
-    // Capture data on field change
-    $('#billing_phone, #billing_first_name, #billing_last_name, #billing_address_1, #billing_state').on('change keyup', function () {
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-            const data = getData();
+        // Periodic data saving (every 30 seconds)
+        setInterval(function () {
+            if (formData.phone && isValidPhone(formData.phone)) {
+                sendData(formData);
+            }
+        }, 30000); // 30 seconds
 
-            if (!isValidPhone(data.phone)) return;
-
-            if (JSON.stringify(data) === JSON.stringify(lastData)) return;
-
-            lastData = data;
-            formData = data; // Store the latest data for periodic saving
-        }, 1500);
+        // Send data when the user leaves the page
+        $(window).on('beforeunload', function () {
+            if (formData.phone && isValidPhone(formData.phone)) {
+                sendData(formData);
+            }
+        });
     });
-
-    // Periodic data saving (every 30 seconds)
-    setInterval(function () {
-        if (formData.phone && isValidPhone(formData.phone)) {
-            sendData(formData);
-        }
-    }, 30000); // 30 seconds
-
-    // Send data when the user leaves the page
-    $(window).on('beforeunload', function () {
-        if (formData.phone && isValidPhone(formData.phone)) {
-            sendData(formData);
-        }
-    });
-});
-
     </script>
     <?php
 });
@@ -105,19 +104,6 @@ function act_save_abandoned_lead() {
     $addr = sanitize_text_field($_POST['address'] ?? '');
     $state = sanitize_text_field($_POST['state'] ?? '');
 
-    // // Capture customer IP address
-    // $ip_address = '';
-    // if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-    //     $ip_address = $_SERVER['HTTP_CLIENT_IP'];
-    // } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-    //     $ip_address = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    // } else {
-    //     $ip_address = $_SERVER['REMOTE_ADDR'];
-    // }
-
-    // // Handle cases where multiple IPs are returned (e.g., via proxies)
-    // $ip_address = explode(',', $ip_address)[0]; // Get the first IP
-
     // Capture customer IP address
     $ip_address = '';
     if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
@@ -131,7 +117,6 @@ function act_save_abandoned_lead() {
     // Handle cases where multiple IPs are returned (e.g., via proxies)
     $ip_address = explode(',', $ip_address)[0]; // Get the first IP
     $ip_address = filter_var($ip_address, FILTER_VALIDATE_IP); // Validate the IP address
-
 
     $cart = WC()->cart ? WC()->cart->get_cart() : [];
     $products = [];
@@ -176,7 +161,6 @@ function act_save_abandoned_lead() {
     wp_send_json_success('Saved');
 }
 
-
 // Mark lead as recovered on order placed
 add_action('woocommerce_checkout_order_processed', function ($order_id) {
     $order = wc_get_order($order_id);
@@ -212,12 +196,12 @@ add_action('wp_ajax_update_abandoned_note', function () {
     }
 
     $updated = update_post_meta($id, 'note', $note);
+    if (!$updated) {
+        wp_send_json_error(['reason' => 'Failed to update post meta']);
+    }
+
     wp_send_json_success(['updated' => $updated]);
 });
-
-
-
-
 
 // Limit WooCommerce phone field to 11 digits number
 add_action('woocommerce_checkout_process', 'njengah_custom_checkout_field_process');
