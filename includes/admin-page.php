@@ -11,69 +11,160 @@ function render_abandoned_admin_page() {
     $nonce = wp_create_nonce("abandon_note_nonce");
     $search_term = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
     $paged = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+    $date_filter = isset($_GET['date_filter']) ? sanitize_text_field($_GET['date_filter']) : '';
+    $items_per_page = isset($_GET['items_per_page']) ? intval($_GET['items_per_page']) : 10;
 
     echo '<div class="wrap">
         <h1>Abandoned Checkouts</h1>
-        <form method="get" style="margin-bottom: 10px;">
+        <form method="get" style="margin-bottom: 20px; display: flex; align-items: center; gap: 20px;">
             <input type="hidden" name="page" value="abandoned-checkouts">
-            <input type="text" name="s" value="' . esc_attr($search_term) . '" placeholder="Search by name or phone" style="padding: 5px; width: 300px;" />
-            <button type="submit" class="button">Search</button>
+
+            <!-- Search Field -->
+            <div>
+                <label for="search_term" style="font-weight: bold; margin-right: 5px;">Search:</label>
+                <input type="text" id="search_term" name="s" value="' . esc_attr($search_term) . '" placeholder="Search by name or phone" style="padding: 5px; width: 300px;" />
+            </div>
+
+            <!-- Date Filter -->
+            <div>
+                <label for="date_filter" style="font-weight: bold; margin-right: 5px;">Filter by Date:</label>
+                <input type="date" id="date_filter" name="date_filter" value="' . esc_attr($date_filter) . '" style="padding: 5px;" />
+            </div>
+
+            <!-- Items Per Page -->
+            <div>
+                <label for="items_per_page" style="font-weight: bold; margin-right: 5px;">Items Per Page:</label>
+                <select id="items_per_page" name="items_per_page" style="padding: 5px;">
+                    <option value="10" ' . selected($items_per_page, 10, false) . '>10</option>
+                    <option value="20" ' . selected($items_per_page, 20, false) . '>20</option>
+                    <option value="50" ' . selected($items_per_page, 50, false) . '>50</option>
+                    <option value="100" ' . selected($items_per_page, 100, false) . '>100</option>
+                </select>
+            </div>
+
+            <!-- Submit Button -->
+            <div>
+                <button type="submit" class="button button-primary">Filter</button>
+            </div>
         </form>
 
-        <form method="post" action="' . admin_url('admin-post.php') . '">
+        <!-- Export CSV Button -->
+        <form method="post" action="' . admin_url('admin-post.php') . '" style="margin-bottom: 20px;">
             <input type="hidden" name="action" value="export_abandoned_checkouts">
-            <input type="submit" class="button button-primary" value="Export CSV">
-        </form><br>
+            <input type="submit" class="button button-secondary" value="Export CSV">
+        </form>
 
         <div id="abandoned-table-wrap">';
 
-
         // Add custom CSS for pagination and hover effects
-    echo '<style>
-    .tablenav-pages {
-        display: flex;
-        justify-content: center;
-        margin-top: 20px;
-    }
-    .tablenav-pages a, .tablenav-pages span {
-        display: inline-block;
-        padding: 8px 12px;
-        margin: 0 5px;
-        border: 1px solid #007cba;
-        border-radius: 4px;
-        background-color: #007cba;
-        color: #fff;
-        text-decoration: none;
-        font-size: 14px;
-        transition: background-color 0.3s ease, color 0.3s ease;
-    }
-    .tablenav-pages a:hover {
-        background-color: #005a9c;
-        color: #fff;
-    }
-    .tablenav-pages .current {
-        background-color: rgb(209, 236, 255);
-        color: rgb(41, 133, 187);
-        font-weight: bold;
-        cursor: default;
-    }
+        echo '<style>
+        .tablenav-pages {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .tablenav-pages a, .tablenav-pages span {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 0 5px;
+            border: 1px solid #007cba;
+            border-radius: 4px;
+            background-color: #007cba;
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .tablenav-pages a:hover {
+            background-color: #005a9c;
+            color: #fff;
+        }
+        .tablenav-pages .current {
+            background-color: rgb(209, 236, 255);
+            color: rgb(41, 133, 187);
+            font-weight: bold;
+            cursor: default;
+        }
 
-    /* Hide toggle button by default */
-    .status-toggle {
-        display: none;
-    }
+        /* Hide toggle button by default */
+        .status-toggle {
+            display: none;
+        }
 
-    /* Show toggle button on row hover */
-    tr:hover .status-toggle {
-        display: inline-block;
-    }
-    </style>';
+        /* Show toggle button on row hover */
+        tr:hover .status-toggle {
+            display: inline-block;
+        }
+
+        /* Style the form container */
+        .wrap form {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 20px;
+        }
+
+        /* Style labels */
+        label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        /* Style inputs and dropdowns */
+        input[type="text"], input[type="date"], select {
+            padding: 5px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        /* Style buttons */
+        .button-primary {
+            background-color: #007cba;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .button-primary:hover {
+            background-color: #005a9c;
+        }
+
+        .button-secondary {
+            background-color: #f3f3f3;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .button-secondary:hover {
+            background-color: #e2e2e2;
+        }
+
+        select {
+            padding: 5px 10px; /* Add padding for spacing */
+            font-size: 14px; /* Ensure readable font size */
+            border: 1px solid #ccc; /* Add border for clarity */
+            border-radius: 4px; /* Rounded corners */
+            width: auto; /* Automatically adjust width */
+            min-width: 80px; /* Ensure minimum width to prevent overlap */
+            text-align: center; /* Center-align the text */
+        }   
+
+        
+        </style>';
 
     // Render the abandoned leads table
-    render_abandoned_table($search_term, $paged);
+    render_abandoned_table($search_term, $paged, $items_per_page, $date_filter);
 
     echo '</div></div>';
-
+    
     // Add JavaScript for Copy and Call buttons
     echo '<script>
     // Copy to clipboard function
@@ -125,9 +216,16 @@ function render_abandoned_admin_page() {
     .copy-button:hover, .call-button:hover {
         background-color: #005a9c;
     }
+
+
+    // table summary text
+    .table-summary {
+        margin-top: 10px;
+        text-align: left;
+        font-size: 14px;
+        color: #333;
+    }
 </style>';
-
-
 
     // Add the JavaScript snippet for handling status updates
     echo '<script>
@@ -198,53 +296,6 @@ function render_abandoned_admin_page() {
     });
 }
 
-    // function saveNote(id) {
-    //     let note = document.getElementById("note-" + id).value;
-    //     let saveButton = document.querySelector("#row-" + id + " .button-small");
-    //     let successMessage = document.getElementById("success-message-" + id);
-
-    //     if (!successMessage) {
-    //         successMessage = document.createElement("span");
-    //         successMessage.id = "success-message-" + id;
-    //         successMessage.style.marginLeft = "10px";
-    //         successMessage.style.color = "green";
-    //         successMessage.style.fontSize = "12px";
-    //         saveButton.parentNode.appendChild(successMessage);
-    //     }
-
-    //     // saveButton.disabled = true;
-    //     // saveButton.textContent = "Saving...";
-
-    //     fetch(ajaxurl, {
-    //         method: "POST",
-    //         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    //         body: new URLSearchParams({
-    //             action: "update_abandoned_note",
-    //             lead_id: id,
-    //             note: note,
-    //             nonce: abandon_nonce
-    //         })
-    //     })
-    //     .then(res => res.json())
-    //     .then(data => {
-    //         if (data.success) {
-    //             successMessage.textContent = "Note saved ✅";
-    //             successMessage.style.color = "green";
-    //         } else {
-    //             successMessage.textContent = "Failed to save ❌";
-    //             successMessage.style.color = "red";
-    //             console.error(data.data?.reason || "Unknown error");
-    //         }
-    //     })
-    //     .finally(() => {
-    //         saveButton.disabled = false;
-    //         saveButton.textContent = "Update";
-    //         setTimeout(() => {
-    //             successMessage.textContent = "";
-    //         }, 1000);
-    //     });
-    // }
-
     function saveNote(id) {
         let note = document.getElementById("note-" + id).value;
         let saveButton = document.querySelector("#row-" + id + " .button-save-note");
@@ -295,15 +346,12 @@ function render_abandoned_admin_page() {
                 }, 1500);
             });
     }
-
-
-
-    
+   
     </script>';
 }
 
 
-function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) {
+function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, $date_filter = '') {
     $args = [
         'post_type' => 'abandoned_lead',
         'post_status' => 'publish',
@@ -334,9 +382,31 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
         ];
     }
 
-    $query = new WP_Query($args);
+    if ($date_filter) {
+        $args['date_query'] = [
+            [
+                'after' => $date_filter,
+                'before' => $date_filter . ' 23:59:59',
+                'inclusive' => true,
+            ],
+        ];
+    }
 
-    echo '<table class="widefat striped">
+        // Query for the current page
+        $query = new WP_Query($args);
+
+        // Query for the total number of leads (without pagination)
+        $total_args = $args;
+        unset($total_args['posts_per_page']);
+        unset($total_args['paged']);
+        $total_query = new WP_Query($total_args);
+        $total_count = $total_query->found_posts;
+    
+        // Calculate the range of items being shown
+        $start_item = ($paged - 1) * $posts_per_page + 1;
+        $end_item = min($paged * $posts_per_page, $total_count);
+
+        echo '<table class="widefat striped">
         <thead>
             <tr>
                 <th>Date</th>
@@ -397,7 +467,12 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
             <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
         </div>
     </td>
-    <td>$state</td>
+    <td>
+                    <div class='text-container'>$state</div>
+                    <div class='button-container'>
+                        <button class='copy-button' onclick='copyToClipboard(\"$state\", this)'>Copy</button>
+                    </div>
+                </td>
     <td>$ip_address</td>
     <td>$subtotal</td>
     <td>$products</td>
@@ -411,7 +486,6 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
         <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
     </td>
 </tr>";
-
         }
     }
 
@@ -429,10 +503,14 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
         echo '</div></div>';
     }
 
+
+    // Showing X of Y abandoned checkouts
+    echo '<div class="table-summary">
+        Showing ' . $start_item . ' to ' . $end_item . ' of ' . $total_count . ' abandoned checkouts
+    </div>';
+
     wp_reset_postdata();
 }
-
-
 
 // Export CSV
 add_action('admin_post_export_abandoned_checkouts', function () {
