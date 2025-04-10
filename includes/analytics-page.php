@@ -306,10 +306,11 @@ function get_abandoned_checkout_rate() {
  * 
  * @return array Revenue recovery data
  */
-function get_revenue_recovery_analysis() {
+
+ function get_revenue_recovery_analysis() {
     global $wpdb;
     
-    $post_type_id = get_post_type_object('abandoned_lead')->name;
+    $post_type_id = 'abandoned_lead'; // Ensure this is the correct post type for abandoned leads
     
     // Get current time in Unix timestamp
     $current_time = time();
@@ -324,7 +325,7 @@ function get_revenue_recovery_analysis() {
         SELECT 
             p.ID,
             MAX(CASE WHEN pm.meta_key = 'timestamp' THEN pm.meta_value END) as timestamp,
-            MAX(CASE WHEN pm.meta_key = 'cart_total' THEN pm.meta_value END) as cart_total,
+            MAX(CASE WHEN pm.meta_key = 'subtotal' THEN pm.meta_value END) as subtotal,
             MAX(CASE WHEN pm.meta_key = 'customer_email' THEN pm.meta_value END) as email,
             MAX(CASE WHEN pm.meta_key = 'customer_phone' THEN pm.meta_value END) as phone
         FROM {$wpdb->posts} p
@@ -366,7 +367,7 @@ function get_revenue_recovery_analysis() {
     // Process results
     foreach ($results as $result) {
         $timestamp = is_numeric($result->timestamp) ? intval($result->timestamp) : strtotime($result->timestamp);
-        $cart_total = floatval($result->cart_total);
+        $subtotal = floatval($result->subtotal); // Fetch subtotal directly
         $customer_key = !empty($result->email) ? $result->email : (!empty($result->phone) ? $result->phone : 'unknown_' . $result->ID);
         
         // Check if this customer has been tracked within the last hour
@@ -389,22 +390,22 @@ function get_revenue_recovery_analysis() {
         
         // All time
         $recovery_data['all_time']['count']++;
-        $recovery_data['all_time']['value'] += $cart_total;
+        $recovery_data['all_time']['value'] += $subtotal; // Add subtotal to revenue
         
         // Last 30 days
         if ($timestamp >= $thirty_days_ago) {
             $recovery_data['thirty_day']['count']++;
-            $recovery_data['thirty_day']['value'] += $cart_total;
+            $recovery_data['thirty_day']['value'] += $subtotal; // Add subtotal to revenue
             
             // Last 7 days
             if ($timestamp >= $seven_days_ago) {
                 $recovery_data['seven_day']['count']++;
-                $recovery_data['seven_day']['value'] += $cart_total;
+                $recovery_data['seven_day']['value'] += $subtotal; // Add subtotal to revenue
                 
                 // Last 24 hours
                 if ($timestamp >= $one_day_ago) {
                     $recovery_data['one_day']['count']++;
-                    $recovery_data['one_day']['value'] += $cart_total;
+                    $recovery_data['one_day']['value'] += $subtotal; // Add subtotal to revenue
                 }
             }
         }
@@ -412,6 +413,8 @@ function get_revenue_recovery_analysis() {
     
     return $recovery_data;
 }
+
+
 
 
 /**
@@ -424,30 +427,30 @@ function get_revenue_recovery_analysis() {
 function get_top_recovery_days($days = 30, $top_count = 7) {
     global $wpdb;
     
-    $post_type_id = get_post_type_object('abandoned_lead')->name;
+    $post_type_id = 'abandoned_lead'; // Ensure this is the correct post type for abandoned leads
     
     // Calculate start date
     $start_date = strtotime("-{$days} days");
     
-    // First, get all recovered carts with their timestamps and customer info - excluding recovered within 1 hour
+    // Query to get recovered carts with their timestamps and customer info - excluding recovered within 1 hour
     $carts_query = "
         SELECT 
             p.ID,
             pm_time.meta_value as timestamp,
-            pm_total.meta_value as cart_total,
+            pm_subtotal.meta_value as subtotal,
             MAX(CASE WHEN pm.meta_key = 'customer_email' THEN pm.meta_value END) as email,
             MAX(CASE WHEN pm.meta_key = 'customer_phone' THEN pm.meta_value END) as phone
         FROM {$wpdb->posts} p
         JOIN {$wpdb->postmeta} pm_time ON p.ID = pm_time.post_id AND pm_time.meta_key = 'timestamp'
         JOIN {$wpdb->postmeta} pm_status ON p.ID = pm_status.post_id AND pm_status.meta_key = 'status' AND pm_status.meta_value = '✅'
-        LEFT JOIN {$wpdb->postmeta} pm_total ON p.ID = pm_total.post_id AND pm_total.meta_key = 'cart_total'
+        LEFT JOIN {$wpdb->postmeta} pm_subtotal ON p.ID = pm_subtotal.post_id AND pm_subtotal.meta_key = 'subtotal'
         LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key IN ('customer_email', 'customer_phone')
         LEFT JOIN {$wpdb->postmeta} pm_recovered ON p.ID = pm_recovered.post_id AND pm_recovered.meta_key = 'recovered_within_hour'
         WHERE p.post_type = %s 
         AND p.post_status = 'publish'
         AND pm_time.meta_value >= %d
         AND (pm_recovered.meta_value IS NULL OR pm_recovered.meta_value != '1')
-        GROUP BY p.ID, pm_time.meta_value, pm_total.meta_value
+        GROUP BY p.ID, pm_time.meta_value, pm_subtotal.meta_value
         ORDER BY pm_time.meta_value ASC
     ";
     
@@ -459,7 +462,7 @@ function get_top_recovery_days($days = 30, $top_count = 7) {
     
     foreach ($carts as $cart) {
         $timestamp = is_numeric($cart->timestamp) ? intval($cart->timestamp) : strtotime($cart->timestamp);
-        $cart_total = floatval($cart->cart_total);
+        $subtotal = floatval($cart->subtotal); // Fetch subtotal directly
         $customer_key = !empty($cart->email) ? $cart->email : (!empty($cart->phone) ? $cart->phone : 'unknown_' . $cart->ID);
         $date = date('Y-m-d', $timestamp);
         
@@ -492,7 +495,7 @@ function get_top_recovery_days($days = 30, $top_count = 7) {
         
         // Add this cart to the daily stats
         $daily_stats[$date]['count']++;
-        $daily_stats[$date]['value'] += $cart_total;
+        $daily_stats[$date]['value'] += $subtotal; // Add subtotal to revenue
     }
     
     // Convert to a simple array and sort by count
@@ -654,38 +657,33 @@ function render_abandoned_analytics_page() {
             
             <!-- Database Stats -->
             <div class="analytics-section">
-                <h2>Database Statistics</h2>
-                <div class="analytics-card">
-                    <div class="analytics-stat">
-                        <span class="analytics-stat-label">Current Active Leads:</span>
-                        <span class="analytics-stat-value"><?php echo $analytics['current_leads']; ?></span>
-                    </div>
-                    <div class="analytics-stat">
-                        <span class="analytics-stat-label">Oldest Lead Date:</span>
-                        <span class="analytics-stat-value">
-                            <?php 
-                            if (!empty($analytics['oldest_lead_date'])) {
-                                echo act_convert_to_bangladesh_time($analytics['oldest_lead_date']);
-                            } else {
-                                echo 'N/A';
-                            }
-                            ?>
-                        </span>
-                    </div>
-                    <div class="analytics-stat">
-                        <span class="analytics-stat-label">Newest Lead Date:</span>
-                        <span class="analytics-stat-value">
-                            <?php 
-                            if (!empty($analytics['newest_lead_date'])) {
-                                echo act_convert_to_bangladesh_time($analytics['newest_lead_date']);
-                            } else {
-                                echo 'N/A';
-                            }
-                            ?>
-                        </span>
-                    </div>
-                </div>
-            </div>
+    <h2>Top Recovery Days (Last 30 Days)</h2>
+    <table class="analytics-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Recovered Carts</th>
+                <th>Recovered Revenue</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($top_recovery_days)): ?>
+            <tr>
+                <td colspan="3">No recovery data available</td>
+            </tr>
+            <?php else: ?>
+                <?php foreach ($top_recovery_days as $day): ?>
+                <tr>
+                    <td><?php echo date_i18n(get_option('date_format'), strtotime($day['date'])); ?></td>
+                    <td><?php echo esc_html($day['count']); ?></td>
+                    <td><?php echo wc_price($day['value']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
             
             <!-- Abandoned Checkout Rate -->
             <div class="analytics-section">
@@ -791,61 +789,62 @@ function render_abandoned_analytics_page() {
             
             <!-- Revenue Recovery Analysis -->
             <div class="analytics-section">
-                <h2>Revenue Recovery Analysis</h2>
-                <div class="analytics-cards">
-                    <!-- Last 24 Hours Card -->
-                    <div class="analytics-card">
-                        <h2>Last 24 Hours</h2>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Carts:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['one_day']['count']; ?></span>
-                        </div>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Revenue:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['one_day']['value']); ?></span>
-                        </div>
-                    </div>
-                    
-                    <!-- Last 7 Days Card -->
-                    <div class="analytics-card">
-                        <h2>Last 7 Days</h2>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Carts:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['seven_day']['count']; ?></span>
-                        </div>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Revenue:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['seven_day']['value']); ?></span>
-                        </div>
-                    </div>
-                    
-                    <!-- Last 30 Days Card -->
-                    <div class="analytics-card">
-                        <h2>Last 30 Days</h2>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Carts:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['thirty_day']['count']; ?></span>
-                        </div>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Revenue:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['thirty_day']['value']); ?></span>
-                        </div>
-                    </div>
-                    
-                    <!-- All Time Card -->
-                    <div class="analytics-card">
-                        <h2>All Time</h2>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Carts:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['all_time']['count']; ?></span>
-                        </div>
-                        <div class="analytics-stat">
-                            <span class="analytics-stat-label">Recovered Revenue:</span>
-                            <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['all_time']['value']); ?></span>
-                        </div>
-                    </div>
-                </div>
+    <h2>Revenue Recovery Analysis</h2>
+    <div class="analytics-cards">
+        <!-- Last 24 Hours Card -->
+        <div class="analytics-card">
+            <h2>Last 24 Hours</h2>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Carts:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['one_day']['count']; ?></span>
             </div>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Revenue:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['one_day']['value']); ?></span>
+            </div>
+        </div>
+        
+        <!-- Last 7 Days Card -->
+        <div class="analytics-card">
+            <h2>Last 7 Days</h2>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Carts:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['seven_day']['count']; ?></span>
+            </div>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Revenue:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['seven_day']['value']); ?></span>
+            </div>
+        </div>
+        
+        <!-- Last 30 Days Card -->
+        <div class="analytics-card">
+            <h2>Last 30 Days</h2>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Carts:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['thirty_day']['count']; ?></span>
+            </div>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Revenue:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['thirty_day']['value']); ?></span>
+            </div>
+        </div>
+        
+        <!-- All Time Card -->
+        <div class="analytics-card">
+            <h2>All Time</h2>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Carts:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['all_time']['count']; ?></span>
+            </div>
+            <div class="analytics-stat">
+                <span class="analytics-stat-label">Recovered Revenue:</span>
+                <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['all_time']['value']); ?></span>
+            </div>
+        </div>
+    </div>
+</div>
+
             
             <!-- Top Recovery Days -->
             <div class="analytics-section">
