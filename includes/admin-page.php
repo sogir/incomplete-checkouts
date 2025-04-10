@@ -74,6 +74,61 @@ function render_abandoned_admin_page() {
 
     echo '</div></div>';
 
+    // Add JavaScript for Copy and Call buttons
+    echo '<script>
+    // Copy to clipboard function
+    function copyToClipboard(text, button) {
+        navigator.clipboard.writeText(text).then(function () {
+            // Change button text to "Copied"
+            button.textContent = "Copied";
+
+            // Reset button text after 2 seconds
+            setTimeout(function () {
+                button.textContent = "Copy";
+            }, 2000);
+        }).catch(function (err) {
+            console.error("Could not copy text: ", err);
+        });
+    }
+
+    // Call phone function
+    function callPhone(phone) {
+        window.location.href = "tel:" + phone;
+    }
+</script>';
+
+    // Add CSS for hover effects
+    echo '<style>
+    .text-container {
+        margin-bottom: 5px;
+    }
+
+    .button-container {
+        display: none;
+    }
+
+    tr:hover .button-container {
+        display: block;
+    }
+
+    .copy-button, .call-button {
+        margin-top: 5px;
+        padding: 5px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        background-color: #007cba;
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+    }
+
+    .copy-button:hover, .call-button:hover {
+        background-color: #005a9c;
+    }
+</style>';
+
+
+
     // Add the JavaScript snippet for handling status updates
     echo '<script>
     const abandon_nonce = "' . $nonce . '";
@@ -241,6 +296,8 @@ function render_abandoned_admin_page() {
             });
     }
 
+
+
     
     </script>';
 }
@@ -321,24 +378,40 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
             echo "<tr id='row-$id'>
                 <td>$date</td>
-                <td>$name</td>
-                <td>$phone</td>
-                <td>$addr</td>
-                <td>$state</td>
-                <td>$ip_address</td>
-                <td>$subtotal</td>
-                <td>$products</td>
-                <td>
-                    <span id='status-$id'>$status</span>
-                    <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
-                    <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
-    
-                </td>
-                <td>
-                    <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
-                    <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
-                </td>
-            </tr>";
+                    <td>
+                        <div class='text-container'>$name</div>
+                        <div class='button-container'>
+                            <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
+                        </div>
+                    </td>
+                    <td>
+                        <div class='text-container'>$phone</div>
+                        <div class='button-container'>
+                            <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
+                            <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
+                        </div>
+                    </td>
+                    <td>
+                <div class='text-container'>$addr</div>
+                <div class='button-container'>
+            <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
+        </div>
+    </td>
+    <td>$state</td>
+    <td>$ip_address</td>
+    <td>$subtotal</td>
+    <td>$products</td>
+    <td>
+        <span id='status-$id'>$status</span>
+        <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
+        <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
+    </td>
+    <td>
+        <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
+        <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
+    </td>
+</tr>";
+
         }
     }
 
@@ -358,6 +431,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10) 
 
     wp_reset_postdata();
 }
+
 
 
 // Export CSV
