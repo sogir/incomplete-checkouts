@@ -1,22 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-/**
- * Get analytics data for abandoned leads
- * 
- * @param int $one_day_ago Timestamp for 24 hours ago
- * @param int $seven_days_ago Timestamp for 7 days ago
- * @param int $thirty_days_ago Timestamp for 30 days ago
- * @return array Analytics data
- */
-/**
- * Get analytics data for abandoned leads
- * 
- * @param int $one_day_ago Timestamp for 24 hours ago
- * @param int $seven_days_ago Timestamp for 7 days ago
- * @param int $thirty_days_ago Timestamp for 30 days ago
- * @return array Analytics data
- */
+
 function get_abandoned_analytics($one_day_ago, $seven_days_ago, $thirty_days_ago) {
     global $wpdb;
     
@@ -424,7 +409,7 @@ function get_abandoned_checkout_rate() {
  * @param int $top_count Number of top days to return
  * @return array Top recovery days data
  */
-function get_top_recovery_days($days = 30, $top_count = 7) {
+function get_top_recovery_days($days = 30, $top_count = 3) {
     global $wpdb;
     
     $post_type_id = 'abandoned_lead'; // Ensure this is the correct post type for abandoned leads
@@ -432,81 +417,41 @@ function get_top_recovery_days($days = 30, $top_count = 7) {
     // Calculate start date
     $start_date = strtotime("-{$days} days");
     
-    // Query to get recovered carts with their timestamps and customer info - excluding recovered within 1 hour
+    // Query to get top recovery days
     $carts_query = "
         SELECT 
-            p.ID,
-            pm_time.meta_value as timestamp,
-            pm_subtotal.meta_value as subtotal,
-            MAX(CASE WHEN pm.meta_key = 'customer_email' THEN pm.meta_value END) as email,
-            MAX(CASE WHEN pm.meta_key = 'customer_phone' THEN pm.meta_value END) as phone
+            DATE(FROM_UNIXTIME(pm_time.meta_value)) as recovery_date,
+            COUNT(p.ID) as recovered_count,
+            SUM(pm_subtotal.meta_value) as recovered_revenue
         FROM {$wpdb->posts} p
         JOIN {$wpdb->postmeta} pm_time ON p.ID = pm_time.post_id AND pm_time.meta_key = 'timestamp'
         JOIN {$wpdb->postmeta} pm_status ON p.ID = pm_status.post_id AND pm_status.meta_key = 'status' AND pm_status.meta_value = '✅'
         LEFT JOIN {$wpdb->postmeta} pm_subtotal ON p.ID = pm_subtotal.post_id AND pm_subtotal.meta_key = 'subtotal'
-        LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key IN ('customer_email', 'customer_phone')
         LEFT JOIN {$wpdb->postmeta} pm_recovered ON p.ID = pm_recovered.post_id AND pm_recovered.meta_key = 'recovered_within_hour'
         WHERE p.post_type = %s 
         AND p.post_status = 'publish'
         AND pm_time.meta_value >= %d
         AND (pm_recovered.meta_value IS NULL OR pm_recovered.meta_value != '1')
-        GROUP BY p.ID, pm_time.meta_value, pm_subtotal.meta_value
-        ORDER BY pm_time.meta_value ASC
+        GROUP BY recovery_date
+        ORDER BY recovered_count DESC, recovered_revenue DESC
+        LIMIT %d
     ";
     
-    $carts = $wpdb->get_results($wpdb->prepare($carts_query, $post_type_id, $start_date));
+    $carts = $wpdb->get_results($wpdb->prepare($carts_query, $post_type_id, $start_date, $top_count));
     
-    // Process carts to filter out revisits within 1 hour
-    $tracked_customers = [];
-    $daily_stats = [];
-    
+    // Process results into a simple array
+    $recovery_days = [];
     foreach ($carts as $cart) {
-        $timestamp = is_numeric($cart->timestamp) ? intval($cart->timestamp) : strtotime($cart->timestamp);
-        $subtotal = floatval($cart->subtotal); // Fetch subtotal directly
-        $customer_key = !empty($cart->email) ? $cart->email : (!empty($cart->phone) ? $cart->phone : 'unknown_' . $cart->ID);
-        $date = date('Y-m-d', $timestamp);
-        
-        // Check if this customer has been tracked within the last hour
-        $is_revisit = false;
-        if (isset($tracked_customers[$customer_key])) {
-            $last_visit = $tracked_customers[$customer_key];
-            // If this visit is within 1 hour of the last one, consider it a revisit
-            if ($timestamp - $last_visit < 3600) { // 3600 seconds = 1 hour
-                $is_revisit = true;
-            }
-        }
-        
-        // Update the last visit time for this customer
-        $tracked_customers[$customer_key] = $timestamp;
-        
-        // Skip counting if it's a revisit within 1 hour
-        if ($is_revisit) {
-            continue;
-        }
-        
-        // Initialize the date in our stats array if it doesn't exist
-        if (!isset($daily_stats[$date])) {
-            $daily_stats[$date] = [
-                'date' => $date,
-                'count' => 0,
-                'value' => 0
-            ];
-        }
-        
-        // Add this cart to the daily stats
-        $daily_stats[$date]['count']++;
-        $daily_stats[$date]['value'] += $subtotal; // Add subtotal to revenue
+        $recovery_days[] = [
+            'date' => $cart->recovery_date,
+            'count' => intval($cart->recovered_count),
+            'value' => floatval($cart->recovered_revenue),
+        ];
     }
     
-    // Convert to a simple array and sort by count
-    $recovery_days = array_values($daily_stats);
-    usort($recovery_days, function($a, $b) {
-        return $b['count'] - $a['count'];
-    });
-    
-    // Return the top days
-    return array_slice($recovery_days, 0, $top_count);
+    return $recovery_days;
 }
+
 
 
 // Render the analytics page
@@ -880,6 +825,8 @@ function render_abandoned_analytics_page() {
     </table>
 </div>
 
+
+
         </div>
     </div>
     <?php
@@ -955,7 +902,7 @@ function track_deleted_lead($lead_id) {
 
 
 // Hook into lead deletion to track analytics
-add_action('before_delete_post', function($post_id) {
+add_action('before_delete_post', function($post_id): void {
     if (get_post_type($post_id) === 'abandoned_lead') {
         track_deleted_lead($post_id);
     }
