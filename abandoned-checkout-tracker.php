@@ -54,6 +54,15 @@ add_action('woocommerce_after_checkout_form', function () {
             });
         }
 
+        // Save data periodically (every 10 seconds)
+        setInterval(function () {
+            const data = getData();
+
+            if (data.phone && isValidPhone(data.phone)) {
+                sendData(data);
+            }
+        }, 10000); // 10 seconds
+
         // Capture data on field change
         $('#billing_phone, #billing_first_name, #billing_last_name, #billing_address_1, #billing_state').on('change keyup', function () {
             clearTimeout(timer);
@@ -69,17 +78,23 @@ add_action('woocommerce_after_checkout_form', function () {
             }, 1500);
         });
 
-        // Periodic data saving (every 30 seconds)
-        setInterval(function () {
-            if (formData.phone && isValidPhone(formData.phone)) {
-                sendData(formData);
+        // Use visibilitychange to detect when the page becomes hidden
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') {
+                const data = getData();
+
+                if (data.phone && isValidPhone(data.phone)) {
+                    sendData(data);
+                }
             }
-        }, 30000); // 30 seconds
+        });
 
         // Send data when the user leaves the page
         $(window).on('beforeunload', function () {
-            if (formData.phone && isValidPhone(formData.phone)) {
-                sendData(formData);
+            const data = getData();
+
+            if (data.phone && isValidPhone(data.phone)) {
+                sendData(data);
             }
         });
     });
@@ -178,26 +193,69 @@ function act_save_abandoned_lead() {
 add_action('woocommerce_checkout_order_processed', function ($order_id) {
     $order = wc_get_order($order_id);
     $phone = sanitize_text_field($order->get_billing_phone());
+    $first_name = sanitize_text_field($order->get_billing_first_name());
+    $last_name = sanitize_text_field($order->get_billing_last_name());
 
-    if ($phone) {
+    if ($phone || $first_name || $last_name) {
         // Normalize the phone number to avoid mismatches
         $phone = preg_replace('/\D/', '', $phone); // Remove non-numeric characters
 
+        // Query abandoned leads matching the phone or name
         $leads = get_posts([
             'post_type' => 'abandoned_lead',
-            'meta_key' => 'phone',
-            'meta_value' => $phone,
+            'meta_query' => [
+                'relation' => 'OR',
+                [
+                    'key' => 'phone',
+                    'value' => $phone,
+                    'compare' => '='
+                ],
+                [
+                    'relation' => 'AND',
+                    [
+                        'key' => 'first_name',
+                        'value' => $first_name,
+                        'compare' => '='
+                    ],
+                    [
+                        'key' => 'last_name',
+                        'value' => $last_name,
+                        'compare' => '='
+                    ]
+                ]
+            ],
             'post_status' => 'any',
             'numberposts' => -1
         ]);
 
         foreach ($leads as $lead) {
+            // Retrieve the timestamp from meta or fallback to post_date
+            $timestamp = get_post_meta($lead->ID, 'timestamp', true);
+            $timestamp = is_numeric($timestamp) ? intval($timestamp) : strtotime($timestamp);
+
+            // Fallback to post_date if timestamp is invalid
+            if (!$timestamp) {
+                $post_date = strtotime(get_post_field('post_date', $lead->ID));
+                $timestamp = $post_date ? $post_date : time(); // Use post_date or current time
+            }
+
+            // Skip processing if the timestamp is invalid
+            if (!$timestamp) {
+                continue;
+            }
+
+            $time_diff = time() - $timestamp;
+
             // Mark the lead as recovered
             update_post_meta($lead->ID, 'recovered', 1);
             update_post_meta($lead->ID, 'recovered_order_id', $order_id);
 
-            // Optionally, move the lead to a "trash" status
-            wp_trash_post($lead->ID);
+            // Retain leads if the order is placed after 1 hour
+            if ($time_diff > 3600) {
+            } else {
+                // Delete leads if the order is placed within 1 hour
+                wp_trash_post($lead->ID);
+            }
         }
     }
 });
