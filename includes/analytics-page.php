@@ -657,33 +657,38 @@ function render_abandoned_analytics_page() {
             
             <!-- Database Stats -->
             <div class="analytics-section">
-    <h2>Top Recovery Days (Last 30 Days)</h2>
-    <table class="analytics-table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Recovered Carts</th>
-                <th>Recovered Revenue</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (empty($top_recovery_days)): ?>
-            <tr>
-                <td colspan="3">No recovery data available</td>
-            </tr>
-            <?php else: ?>
-                <?php foreach ($top_recovery_days as $day): ?>
-                <tr>
-                    <td><?php echo date_i18n(get_option('date_format'), strtotime($day['date'])); ?></td>
-                    <td><?php echo esc_html($day['count']); ?></td>
-                    <td><?php echo wc_price($day['value']); ?></td>
-                </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
-</div>
-
+                <h2>Database Statistics</h2>
+                <div class="analytics-card">
+                    <div class="analytics-stat">
+                        <span class="analytics-stat-label">Current Active Leads:</span>
+                        <span class="analytics-stat-value"><?php echo $analytics['current_leads']; ?></span>
+                    </div>
+                    <div class="analytics-stat">
+                        <span class="analytics-stat-label">Oldest Lead Date:</span>
+                        <span class="analytics-stat-value">
+                            <?php 
+                            if (!empty($analytics['oldest_lead_date'])) {
+                                echo act_convert_to_bangladesh_time($analytics['oldest_lead_date']);
+                            } else {
+                                echo 'N/A';
+                            }
+                            ?>
+                        </span>
+                    </div>
+                    <div class="analytics-stat">
+                        <span class="analytics-stat-label">Newest Lead Date:</span>
+                        <span class="analytics-stat-value">
+                            <?php 
+                            if (!empty($analytics['newest_lead_date'])) {
+                                echo act_convert_to_bangladesh_time($analytics['newest_lead_date']);
+                            } else {
+                                echo 'N/A';
+                            }
+                            ?>
+                        </span>
+                    </div>
+                </div>
+            </div>
             
             <!-- Abandoned Checkout Rate -->
             <div class="analytics-section">
@@ -848,32 +853,33 @@ function render_abandoned_analytics_page() {
             
             <!-- Top Recovery Days -->
             <div class="analytics-section">
-                <h2>Top Recovery Days (Last 30 Days)</h2>
-                <table class="analytics-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Recovered Carts</th>
-                            <th>Recovered Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($top_recovery_days)): ?>
-                        <tr>
-                            <td colspan="3">No recovery data available</td>
-                        </tr>
-                        <?php else: ?>
-                            <?php foreach ($top_recovery_days as $day): ?>
-                            <tr>
-                                <td><?php echo date_i18n(get_option('date_format'), strtotime($day['date'])); ?></td>
-                                <td><?php echo esc_html($day['count']); ?></td>
-                                <td><?php echo wc_price($day['value']); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+    <h2>Top Recovery Days (Last 30 Days)</h2>
+    <table class="analytics-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Recovered Carts</th>
+                <th>Recovered Revenue</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($top_recovery_days)): ?>
+            <tr>
+                <td colspan="3">No recovery data available</td>
+            </tr>
+            <?php else: ?>
+                <?php foreach ($top_recovery_days as $day): ?>
+                <tr>
+                    <td><?php echo date_i18n(get_option('date_format'), strtotime($day['date'])); ?></td>
+                    <td><?php echo esc_html($day['count']); ?></td>
+                    <td><?php echo wc_price($day['value']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
         </div>
     </div>
     <?php
