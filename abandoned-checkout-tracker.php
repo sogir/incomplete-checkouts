@@ -131,16 +131,6 @@ function act_save_abandoned_lead() {
         wp_send_json_error('Invalid phone format');
     }
 
-    // Check if the phone number exists in a completed order
-    $orders = wc_get_orders([
-        'billing_phone' => $phone,
-        'status' => ['completed', 'processing', 'on-hold'], // Add other statuses if needed
-        'limit' => 1,
-    ]);
-
-    if (!empty($orders)) {
-        wp_send_json_error('Order already exists for this phone number');
-    }
 
     // Proceed with saving the abandoned lead
     $first = sanitize_text_field($_POST['first_name'] ?? '');
@@ -656,30 +646,47 @@ add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
     exit;
 });
 
-// Add cleanup routine to remove old abandoned leads (older than 30 days)
-add_action('wp_scheduled_delete', 'act_cleanup_old_abandoned_leads');
-
+/**
+ * Cleanup abandoned leads older than 7 days.
+ */
 function act_cleanup_old_abandoned_leads() {
-    $thirty_days_ago = time() - (30 * 86400); // 30 days in seconds
-    
+    $seven_days_ago = time() - 604800; // 7 days in seconds
+
     $old_leads = get_posts([
         'post_type' => 'abandoned_lead',
         'meta_query' => [
             [
                 'key' => 'timestamp',
-                'value' => $thirty_days_ago,
+                'value' => $seven_days_ago,
                 'compare' => '<',
                 'type' => 'NUMERIC'
             ]
         ],
         'post_status' => 'publish',
-        'numberposts' => 100 // Process in batches to avoid timeout
+        'numberposts' => -1 // Get all matching leads
     ]);
-    
+
     foreach ($old_leads as $lead) {
-        wp_delete_post($lead->ID, true);
+        wp_delete_post($lead->ID, true); // Force delete the post
     }
 }
+
+// Schedule the cleanup function on plugin activation
+register_activation_hook(__FILE__, function () {
+    if (!wp_next_scheduled('act_cleanup_old_abandoned_leads_event')) {
+        wp_schedule_event(time(), 'daily', 'act_cleanup_old_abandoned_leads_event');
+    }
+});
+
+// Clear the scheduled event on plugin deactivation
+register_deactivation_hook(__FILE__, function () {
+    wp_clear_scheduled_hook('act_cleanup_old_abandoned_leads_event');
+});
+
+// Hook the cleanup function to the scheduled event
+add_action('act_cleanup_old_abandoned_leads_event', 'act_cleanup_old_abandoned_leads');
+
+
 
 /**
  * Convert a timestamp to Bangladesh time
