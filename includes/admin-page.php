@@ -564,26 +564,59 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
         'order' => 'DESC',
         'posts_per_page' => $posts_per_page,
         'paged' => $paged,
+        'meta_query' => [
+            // Exclude leads that were recovered within 1 hour
+            [
+                'relation' => 'OR',
+                [
+                    'key' => 'recovered_within_hour',
+                    'compare' => 'NOT EXISTS'
+                ],
+                [
+                    'key' => 'recovered_within_hour',
+                    'value' => '1',
+                    'compare' => '!='
+                ]
+            ]
+        ]
     ];
 
     if ($search) {
+        // Add search conditions while maintaining the exclusion
         $args['meta_query'] = [
-            'relation' => 'OR',
+            'relation' => 'AND',
+            // Keep the exclusion condition
             [
-                'key' => 'first_name',
-                'value' => $search,
-                'compare' => 'LIKE',
+                'relation' => 'OR',
+                [
+                    'key' => 'recovered_within_hour',
+                    'compare' => 'NOT EXISTS'
+                ],
+                [
+                    'key' => 'recovered_within_hour',
+                    'value' => '1',
+                    'compare' => '!='
+                ]
             ],
+            // Add the search condition
             [
-                'key' => 'last_name',
-                'value' => $search,
-                'compare' => 'LIKE',
-            ],
-            [
-                'key' => 'phone',
-                'value' => $search,
-                'compare' => 'LIKE',
-            ],
+                'relation' => 'OR',
+                [
+                    'key' => 'first_name',
+                    'value' => $search,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key' => 'last_name',
+                    'value' => $search,
+                    'compare' => 'LIKE',
+                ],
+                [
+                    'key' => 'phone',
+                    'value' => $search,
+                    'compare' => 'LIKE',
+                ],
+            ]
         ];
     }
 
@@ -596,6 +629,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
             ],
         ];
     }
+
 
     // Query for the current page
     $query = new WP_Query($args);
@@ -634,10 +668,19 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
     } else {
         while ($query->have_posts()) {
             $query->the_post();
-            $id = get_the_ID();
-            $first = get_post_meta($id, 'first_name', true);
-            $last = get_post_meta($id, 'last_name', true);
-            $name = esc_html(trim("$first $last"));
+        $id = get_the_ID();
+        $first = get_post_meta($id, 'first_name', true);
+        $last = get_post_meta($id, 'last_name', true);
+        
+        // Fix for empty name fields
+        $first = !empty($first) ? esc_html($first) : '';
+        $last = !empty($last) ? esc_html($last) : '';
+        
+        // Create a proper name display
+        $name = trim("$first $last");
+        if (empty($name)) {
+            $name = '<em>No Name Provided</em>';
+        }
             $phone = esc_html(get_post_meta($id, 'phone', true));
             $addr = esc_html(get_post_meta($id, 'address', true));
             $state_code = get_post_meta($id, 'state', true);
@@ -732,6 +775,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
 
     wp_reset_postdata();
 }
+
 
 // Export CSV
 add_action('admin_post_export_abandoned_checkouts', function () {
