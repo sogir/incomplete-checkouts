@@ -170,6 +170,7 @@ function act_save_abandoned_lead() {
     $subtotal = WC()->cart ? WC()->cart->get_subtotal() : 0.00;
 
     $current_time = time();
+    $bangladesh_time = act_convert_to_bangladesh_time($current_time);
     
     // Get or create session ID
     $session_id = sanitize_text_field($_POST['session_id'] ?? '');
@@ -217,6 +218,7 @@ function act_save_abandoned_lead() {
         
         // Always update the last_updated timestamp to show the latest activity
         update_post_meta($post_id, 'last_updated', $current_time);
+        update_post_meta($post_id, 'last_updated_readable', $bangladesh_time);
         
         wp_send_json_success([
             'message' => 'Updated existing lead',
@@ -264,6 +266,7 @@ function act_save_abandoned_lead() {
         // Update session ID and timestamp
         update_post_meta($post_id, 'session_id', $session_id);
         update_post_meta($post_id, 'last_updated', $current_time);
+        update_post_meta($post_id, 'last_updated_readable', $bangladesh_time);
         update_post_meta($post_id, 'ip_address', $ip_address);
         
         wp_send_json_success([
@@ -289,8 +292,9 @@ function act_save_abandoned_lead() {
     update_post_meta($post_id, 'products', $product_str);
     update_post_meta($post_id, 'subtotal', $subtotal);
     update_post_meta($post_id, 'timestamp', $current_time); // Unix timestamp for calculations
-    update_post_meta($post_id, 'timestamp_readable', $mysql_time); // Readable format for display
+    update_post_meta($post_id, 'timestamp_readable', $bangladesh_time); // Bangladesh time for display
     update_post_meta($post_id, 'last_updated', $current_time);
+    update_post_meta($post_id, 'last_updated_readable', $bangladesh_time);
     update_post_meta($post_id, 'ip_address', $ip_address);
     update_post_meta($post_id, 'session_id', $session_id);
     update_post_meta($post_id, 'status', '❌'); // Default status
@@ -456,11 +460,15 @@ function process_recovered_lead($lead, $order_id) {
     // Calculate time difference in seconds
     $current_time = time();
     $time_diff = $current_time - $timestamp;
+    
+    // Get Bangladesh time for display
+    $recovery_time_readable = act_convert_to_bangladesh_time($current_time);
         
     // Mark the lead as recovered
     update_post_meta($lead->ID, 'recovered', 1);
     update_post_meta($lead->ID, 'recovered_order_id', $order_id);
     update_post_meta($lead->ID, 'recovery_time', $current_time);
+    update_post_meta($lead->ID, 'recovery_time_readable', $recovery_time_readable);
     
     // Delete leads if the order is placed within 1 hour (3600 seconds)
     if ($time_diff <= 3600) {
@@ -570,4 +578,34 @@ function act_cleanup_old_abandoned_leads() {
     foreach ($old_leads as $lead) {
         wp_delete_post($lead->ID, true);
     }
+}
+
+/**
+ * Convert a timestamp to Bangladesh time
+ * 
+ * @param int|string $timestamp Unix timestamp or date string
+ * @return string Formatted date/time in Bangladesh timezone
+ */
+function act_convert_to_bangladesh_time($timestamp) {
+    // If it's a numeric timestamp, use it directly
+    if (is_numeric($timestamp)) {
+        $unix_timestamp = intval($timestamp);
+    } 
+    // Otherwise try to convert the string to a timestamp
+    else {
+        $unix_timestamp = strtotime($timestamp);
+    }
+    
+    // If we couldn't get a valid timestamp, return the original
+    if (!$unix_timestamp) {
+        return $timestamp;
+    }
+    
+    // Set the timezone to Bangladesh
+    $date = new DateTime();
+    $date->setTimestamp($unix_timestamp);
+    $date->setTimezone(new DateTimeZone('Asia/Dhaka'));
+    
+    // Return formatted date/time
+    return $date->format('Y-m-d H:i:s');
 }
