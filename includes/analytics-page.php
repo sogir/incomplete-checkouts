@@ -300,6 +300,8 @@ function render_abandoned_analytics_page() {
                     </div>
                 </div>
             </div>
+            
+            <?php render_additional_analytics_sections(); ?>
         </div>
     </div>
     <?php
@@ -429,10 +431,6 @@ function get_abandoned_analytics($one_day_ago, $seven_days_ago, $thirty_days_ago
             }
         }
     }
-    
-    // Get data from the database for deleted leads (if you're tracking them)
-    // This would require a separate table to track deleted leads
-    // For now, we'll use the option table to store aggregate data
     
     // Get stored analytics data for deleted leads
     $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', [
@@ -567,4 +565,565 @@ function cleanup_abandoned_analytics() {
     
     // Save updated analytics
     update_option('abandoned_checkout_deleted_analytics', $deleted_analytics);
+}
+
+/**
+ * Get top abandoned products
+ * 
+ * @param int $limit Number of products to return
+ * @param int $days_ago Timestamp for filtering by days
+ * @return array Top abandoned products data
+ */
+function get_top_abandoned_products($limit = 10, $days_ago = null) {
+    global $wpdb;
+    
+    $post_type_id = get_post_type_object('abandoned_lead')->name;
+    
+    // Base query to get product data from abandoned carts
+    $query = "
+        SELECT 
+            pm_products.meta_value as product_data,
+            COUNT(p.ID) as abandon_count
+        FROM {$wpdb->posts} p
+        JOIN {$wpdb->postmeta} pm_products ON p.ID = pm_products.post_id AND pm_products.meta_key = 'cart_products'
+        JOIN {$wpdb->postmeta} pm_status ON p.ID = pm_status.post_id AND pm_status.meta_key = 'status'
+    ";
+    
+    // Add time filter if specified
+    if ($days_ago) {
+        $query .= $wpdb->prepare("
+            JOIN {$wpdb->postmeta} pm_time ON p.ID = pm_time.post_id AND pm_time.meta_key = 'timestamp'
+            WHERE p.post_type = %s AND p.post_status = 'publish' 
+            AND pm_status.meta_value != '✅'
+            AND pm_time.meta_value >= %d
+        ", $post_type_id, $days_ago);
+    } else {
+        $query .= $wpdb->prepare("
+            WHERE p.post_type = %s AND p.post_status = 'publish' 
+            AND pm_status.meta_value != '✅'
+        ", $post_type_id);
+    }
+    
+    $query .= "
+        GROUP BY pm_products.meta_value
+        ORDER BY abandon_count DESC
+        LIMIT %d
+    ";
+    
+    $results = $wpdb->get_results($wpdb->prepare($query, $limit));
+    
+    // Process results to extract product information
+    $products = [];
+    foreach ($results as $result) {
+        $cart_products = maybe_unserialize($result->product_data);
+        if (is_array($cart_products)) {
+            foreach ($cart_products as $product) {
+                $product_id = isset($product['product_id']) ? $product['product_id'] : 0;
+                $quantity = isset($product['quantity']) ? $product['quantity'] : 1;
+                
+                if ($product_id) {
+                    if (!isset($products[$product_id])) {
+                        $products[$product_id] = [
+                            'id' => $product_id,
+                            'name' => get_the_title($product_id),
+                            'count' => 0,
+                            'quantity' => 0,
+                            'price' => get_post_meta($product_id, '_price', true),
+                            'image' => get_the_post_thumbnail_url($product_id, 'thumbnail') ?: '',
+                            'permalink' => get_permalink($product_id)
+                        ];
+                    }
+                    
+                    $products[$product_id]['count']++;
+                    $products[$product_id]['quantity'] += $quantity;
+                }
+            }
+        }
+    }
+    
+    // Sort by count
+    usort($products, function($a, $b) {
+        return $b['count'] - $a['count'];
+    });
+    
+    // Limit to requested number
+    return array_slice($products, 0, $limit);
+}
+
+/**
+ * Get abandoned checkout rate compared to successful orders
+ * 
+ * @return array Checkout rate data for different time periods
+ */
+function get_abandoned_checkout_rate() {
+    global $wpdb;
+    
+    // Get current time in Unix timestamp
+    $current_time = time();
+    
+    // Calculate time periods
+    $one_day_ago = $current_time - (24 * 60 * 60);
+    $seven_days_ago = $current_time - (7 * 24 * 60 * 60);
+    $thirty_days_ago = $current_time - (30 * 24 * 60 * 60);
+    
+    // Get analytics data for abandoned checkouts
+    $abandoned_analytics = get_abandoned_analytics($one_day_ago, $seven_days_ago, $thirty_days_ago);
+    
+    // Get WooCommerce orders for the same time periods
+    $one_day_orders = wc_get_orders([
+        'date_created' => '>=' . date('Y-m-d', $one_day_ago),
+        'status' => ['wc-completed', 'wc-processing'],
+        'limit' => -1,
+        'return' => 'ids',
+    ]);
+    
+    $seven_day_orders = wc_get_orders([
+        'date_created' => '>=' . date('Y-m-d', $seven_days_ago),
+        'status' => ['wc-completed', 'wc-processing'],
+        'limit' => -1,
+        'return' => 'ids',
+    ]);
+    
+    $thirty_day_orders = wc_get_orders([
+        'date_created' => '>=' . date('Y-m-d', $thirty_days_ago),
+        'status' => ['wc-completed', 'wc-processing'],
+        'limit' => -1,
+        'return' => 'ids',
+    ]);
+    
+    // Get all time orders count
+    $all_time_orders_query = "
+        SELECT COUNT(ID) FROM {$wpdb->posts}
+        WHERE post_type = 'shop_order'
+        AND post_status IN ('wc-completed', 'wc-processing')
+    ";
+    $all_time_orders_count = $wpdb->get_var($all_time_orders_query);
+    
+    // Calculate rates
+    $one_day_total = count($one_day_orders) + $abandoned_analytics['one_day_pending'];
+    $one_day_rate = $one_day_total > 0 ? round(($abandoned_analytics['one_day_pending'] / $one_day_total) * 100, 2) : 0;
+    
+    $seven_day_total = count($seven_day_orders) + $abandoned_analytics['seven_day_pending'];
+    $seven_day_rate = $seven_day_total > 0 ? round(($abandoned_analytics['seven_day_pending'] / $seven_day_total) * 100, 2) : 0;
+    
+    $thirty_day_total = count($thirty_day_orders) + $abandoned_analytics['thirty_day_pending'];
+    $thirty_day_rate = $thirty_day_total > 0 ? round(($abandoned_analytics['thirty_day_pending'] / $thirty_day_total) * 100, 2) : 0;
+    
+    $all_time_total = $all_time_orders_count + $abandoned_analytics['all_time_pending'];
+    $all_time_rate = $all_time_total > 0 ? round(($abandoned_analytics['all_time_pending'] / $all_time_total) * 100, 2) : 0;
+    
+    return [
+        'one_day' => [
+            'completed_orders' => count($one_day_orders),
+            'abandoned_carts' => $abandoned_analytics['one_day_pending'],
+            'total_sessions' => $one_day_total,
+            'abandon_rate' => $one_day_rate
+        ],
+        'seven_day' => [
+            'completed_orders' => count($seven_day_orders),
+            'abandoned_carts' => $abandoned_analytics['seven_day_pending'],
+            'total_sessions' => $seven_day_total,
+            'abandon_rate' => $seven_day_rate
+        ],
+        'thirty_day' => [
+            'completed_orders' => count($thirty_day_orders),
+            'abandoned_carts' => $abandoned_analytics['thirty_day_pending'],
+            'total_sessions' => $thirty_day_total,
+            'abandon_rate' => $thirty_day_rate
+        ],
+        'all_time' => [
+            'completed_orders' => $all_time_orders_count,
+            'abandoned_carts' => $abandoned_analytics['all_time_pending'],
+            'total_sessions' => $all_time_total,
+            'abandon_rate' => $all_time_rate
+        ]
+    ];
+}
+
+/**
+ * Get revenue recovery analysis
+ * 
+ * @return array Revenue recovery data
+ */
+function get_revenue_recovery_analysis() {
+    global $wpdb;
+    
+    $post_type_id = get_post_type_object('abandoned_lead')->name;
+    
+    // Get current time in Unix timestamp
+    $current_time = time();
+    
+    // Calculate time periods
+    $one_day_ago = $current_time - (24 * 60 * 60);
+    $seven_days_ago = $current_time - (7 * 24 * 60 * 60);
+    $thirty_days_ago = $current_time - (30 * 24 * 60 * 60);
+    
+    // Query to get recovered carts with their values
+    $query = "
+        SELECT 
+            p.ID,
+            MAX(CASE WHEN pm.meta_key = 'timestamp' THEN pm.meta_value END) as timestamp,
+            MAX(CASE WHEN pm.meta_key = 'cart_total' THEN pm.meta_value END) as cart_total
+        FROM {$wpdb->posts} p
+        JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+        JOIN {$wpdb->postmeta} pm_status ON p.ID = pm_status.post_id AND pm_status.meta_key = 'status' AND pm_status.meta_value = '✅'
+        WHERE p.post_type = %s AND p.post_status = 'publish'
+        GROUP BY p.ID
+    ";
+    
+    $results = $wpdb->get_results($wpdb->prepare($query, $post_type_id));
+    
+    // Initialize data
+    $recovery_data = [
+        'one_day' => [
+            'count' => 0,
+            'value' => 0
+        ],
+        'seven_day' => [
+            'count' => 0,
+            'value' => 0
+        ],
+        'thirty_day' => [
+            'count' => 0,
+            'value' => 0
+        ],
+        'all_time' => [
+            'count' => 0,
+            'value' => 0
+        ]
+    ];
+    
+    // Process results
+    foreach ($results as $result) {
+        $timestamp = is_numeric($result->timestamp) ? intval($result->timestamp) : strtotime($result->timestamp);
+        $cart_total = floatval($result->cart_total);
+        
+        // All time
+        $recovery_data['all_time']['count']++;
+        $recovery_data['all_time']['value'] += $cart_total;
+        
+        // Last 30 days
+        if ($timestamp >= $thirty_days_ago) {
+            $recovery_data['thirty_day']['count']++;
+            $recovery_data['thirty_day']['value'] += $cart_total;
+            
+            // Last 7 days
+            if ($timestamp >= $seven_days_ago) {
+                $recovery_data['seven_day']['count']++;
+                $recovery_data['seven_day']['value'] += $cart_total;
+                
+                // Last 24 hours
+                if ($timestamp >= $one_day_ago) {
+                    $recovery_data['one_day']['count']++;
+                    $recovery_data['one_day']['value'] += $cart_total;
+                }
+            }
+        }
+    }
+    
+    return $recovery_data;
+}
+
+/**
+ * Get top recovery days
+ * 
+ * @param int $days Number of days to analyze
+ * @param int $top_count Number of top days to return
+ * @return array Top recovery days data
+ */
+function get_top_recovery_days($days = 30, $top_count = 7) {
+    global $wpdb;
+    
+    $post_type_id = get_post_type_object('abandoned_lead')->name;
+    
+    // Calculate start date
+    $start_date = strtotime("-{$days} days");
+    
+    // Query to get recovered carts with their timestamps
+    $query = "
+        SELECT 
+            DATE(FROM_UNIXTIME(pm_time.meta_value)) as recovery_date,
+            COUNT(p.ID) as recovery_count,
+            SUM(pm_total.meta_value) as recovery_value
+        FROM {$wpdb->posts} p
+        JOIN {$wpdb->postmeta} pm_time ON p.ID = pm_time.post_id AND pm_time.meta_key = 'timestamp'
+        JOIN {$wpdb->postmeta} pm_status ON p.ID = pm_status.post_id AND pm_status.meta_key = 'status' AND pm_status.meta_value = '✅'
+        LEFT JOIN {$wpdb->postmeta} pm_total ON p.ID = pm_total.post_id AND pm_total.meta_key = 'cart_total'
+        WHERE p.post_type = %s AND p.post_status = 'publish'
+        AND pm_time.meta_value >= %d
+        GROUP BY recovery_date
+        ORDER BY recovery_count DESC
+        LIMIT %d
+    ";
+    
+    $results = $wpdb->get_results($wpdb->prepare($query, $post_type_id, $start_date, $top_count));
+    
+    // Process results
+    $recovery_days = [];
+    foreach ($results as $result) {
+        $recovery_days[] = [
+            'date' => $result->recovery_date,
+            'count' => intval($result->recovery_count),
+            'value' => floatval($result->recovery_value)
+        ];
+    }
+    
+    return $recovery_days;
+}
+
+/**
+ * Render additional analytics sections
+ */
+function render_additional_analytics_sections() {
+    // Get current time in Unix timestamp
+    $current_time = time();
+    $thirty_days_ago = $current_time - (30 * 24 * 60 * 60);
+    
+    // Get top abandoned products
+    $top_products = get_top_abandoned_products(10, $thirty_days_ago);
+    
+    // Get abandoned checkout rate
+    $checkout_rate = get_abandoned_checkout_rate();
+    
+    // Get revenue recovery analysis
+    $revenue_recovery = get_revenue_recovery_analysis();
+    
+    // Get top recovery days
+    $top_recovery_days = get_top_recovery_days(30, 7);
+    
+    ?>
+    <!-- Top Abandoned Products -->
+    <div class="analytics-section">
+        <h2>Top Abandoned Products (Last 30 Days)</h2>
+        <table class="analytics-table">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Image</th>
+                    <th>Abandoned Count</th>
+                    <th>Total Quantity</th>
+                    <th>Price</th>
+                    <th>Potential Revenue Loss</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($top_products)): ?>
+                <tr>
+                    <td colspan="6">No abandoned products data available</td>
+                </tr>
+                <?php else: ?>
+                    <?php foreach ($top_products as $product): ?>
+                    <tr>
+                        <td>
+                            <a href="<?php echo esc_url($product['permalink']); ?>" target="_blank">
+                                <?php echo esc_html($product['name']); ?>
+                            </a>
+                        </td>
+                        <td>
+                            <?php if (!empty($product['image'])): ?>
+                            <img src="<?php echo esc_url($product['image']); ?>" width="50" height="50" alt="<?php echo esc_attr($product['name']); ?>">
+                            <?php else: ?>
+                            <span>No image</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html($product['count']); ?></td>
+                        <td><?php echo esc_html($product['quantity']); ?></td>
+                        <td><?php echo wc_price($product['price']); ?></td>
+                        <td><?php echo wc_price($product['price'] * $product['quantity']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Abandoned Checkout Rate -->
+    <div class="analytics-section">
+        <h2>Abandoned Checkout Rate</h2>
+        <div class="analytics-cards">
+            <!-- Last 24 Hours Card -->
+            <div class="analytics-card">
+                <h2>Last 24 Hours</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Completed Orders:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $checkout_rate['one_day']['completed_orders']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandoned Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-pending"><?php echo $checkout_rate['one_day']['abandoned_carts']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Total Sessions:</span>
+                    <span class="analytics-stat-value"><?php echo $checkout_rate['one_day']['total_sessions']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandonment Rate:</span>
+                    <span class="analytics-stat-value analytics-stat-ratio"><?php echo $checkout_rate['one_day']['abandon_rate']; ?>%</span>
+                </div>
+                <div class="analytics-progress-bar">
+                    <div class="analytics-progress-fill" style="width: <?php echo $checkout_rate['one_day']['abandon_rate']; ?>%"></div>
+                </div>
+            </div>
+            
+            <!-- Last 7 Days Card -->
+            <div class="analytics-card">
+                <h2>Last 7 Days</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Completed Orders:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $checkout_rate['seven_day']['completed_orders']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandoned Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-pending"><?php echo $checkout_rate['seven_day']['abandoned_carts']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Total Sessions:</span>
+                    <span class="analytics-stat-value"><?php echo $checkout_rate['seven_day']['total_sessions']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandonment Rate:</span>
+                    <span class="analytics-stat-value analytics-stat-ratio"><?php echo $checkout_rate['seven_day']['abandon_rate']; ?>%</span>
+                </div>
+                <div class="analytics-progress-bar">
+                    <div class="analytics-progress-fill" style="width: <?php echo $checkout_rate['seven_day']['abandon_rate']; ?>%"></div>
+                </div>
+            </div>
+            
+            <!-- Last 30 Days Card -->
+            <div class="analytics-card">
+                <h2>Last 30 Days</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Completed Orders:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $checkout_rate['thirty_day']['completed_orders']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandoned Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-pending"><?php echo $checkout_rate['thirty_day']['abandoned_carts']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Total Sessions:</span>
+                    <span class="analytics-stat-value"><?php echo $checkout_rate['thirty_day']['total_sessions']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandonment Rate:</span>
+                    <span class="analytics-stat-value analytics-stat-ratio"><?php echo $checkout_rate['thirty_day']['abandon_rate']; ?>%</span>
+                </div>
+                <div class="analytics-progress-bar">
+                    <div class="analytics-progress-fill" style="width: <?php echo $checkout_rate['thirty_day']['abandon_rate']; ?>%"></div>
+                </div>
+            </div>
+            
+            <!-- All Time Card -->
+            <div class="analytics-card">
+                <h2>All Time</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Completed Orders:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $checkout_rate['all_time']['completed_orders']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandoned Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-pending"><?php echo $checkout_rate['all_time']['abandoned_carts']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Total Sessions:</span>
+                    <span class="analytics-stat-value"><?php echo $checkout_rate['all_time']['total_sessions']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Abandonment Rate:</span>
+                    <span class="analytics-stat-value analytics-stat-ratio"><?php echo $checkout_rate['all_time']['abandon_rate']; ?>%</span>
+                </div>
+                <div class="analytics-progress-bar">
+                    <div class="analytics-progress-fill" style="width: <?php echo $checkout_rate['all_time']['abandon_rate']; ?>%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Revenue Recovery Analysis -->
+    <div class="analytics-section">
+        <h2>Revenue Recovery Analysis</h2>
+        <div class="analytics-cards">
+            <!-- Last 24 Hours Card -->
+            <div class="analytics-card">
+                <h2>Last 24 Hours</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['one_day']['count']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Revenue:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['one_day']['value']); ?></span>
+                </div>
+            </div>
+            
+            <!-- Last 7 Days Card -->
+            <div class="analytics-card">
+                <h2>Last 7 Days</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['seven_day']['count']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Revenue:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['seven_day']['value']); ?></span>
+                </div>
+            </div>
+            
+            <!-- Last 30 Days Card -->
+            <div class="analytics-card">
+                <h2>Last 30 Days</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['thirty_day']['count']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Revenue:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['thirty_day']['value']); ?></span>
+                </div>
+            </div>
+            
+            <!-- All Time Card -->
+            <div class="analytics-card">
+                <h2>All Time</h2>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Carts:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo $revenue_recovery['all_time']['count']; ?></span>
+                </div>
+                <div class="analytics-stat">
+                    <span class="analytics-stat-label">Recovered Revenue:</span>
+                    <span class="analytics-stat-value analytics-stat-success"><?php echo wc_price($revenue_recovery['all_time']['value']); ?></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Top Recovery Days -->
+    <div class="analytics-section">
+        <h2>Top Recovery Days (Last 30 Days)</h2>
+        <table class="analytics-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Recovered Carts</th>
+                    <th>Recovered Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($top_recovery_days)): ?>
+                <tr>
+                    <td colspan="3">No recovery data available</td>
+                </tr>
+                <?php else: ?>
+                    <?php foreach ($top_recovery_days as $day): ?>
+                    <tr>
+                        <td><?php echo date_i18n(get_option('date_format'), strtotime($day['date'])); ?></td>
+                        <td><?php echo esc_html($day['count']); ?></td>
+                        <td><?php echo wc_price($day['value']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
 }
