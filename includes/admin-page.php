@@ -2,9 +2,33 @@
 if (!defined('ABSPATH')) exit;
 
 // Admin menu
-add_action('admin_menu', function () {
+    add_action('admin_menu', function () {
     add_menu_page('Abandoned Checkouts', 'Abandoned Checkouts', 'manage_woocommerce', 'abandoned-checkouts', 'render_abandoned_admin_page', 'dashicons-cart');
+    
+    // Submenu for Analytics
+    add_submenu_page(
+        'abandoned-checkouts',
+        'Abandoned Checkout Analytics',
+        'Analytics',
+        'manage_woocommerce',
+        'abandoned-checkout-analytics',
+        'render_abandoned_analytics_page'
+    );
+
+    // Submenu for Settings
+    add_submenu_page(
+        'abandoned-checkouts', // Parent slug
+        'Settings', // Page title
+        'Settings', // Menu title
+        'manage_woocommerce', // Capability
+        'abandoned-checkouts-settings', // Menu slug
+        'render_settings_page' // Callback function
+    );
 });
+
+// Callback functions for the pages
+require_once plugin_dir_path(__FILE__) . 'analytics-page.php';
+require_once plugin_dir_path(__FILE__) . 'settings-page.php';
 
 // Admin page content
 function render_abandoned_admin_page() {
