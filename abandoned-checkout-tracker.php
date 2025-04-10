@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Abandoned Checkout Tracker for WooCommerce
  * Description: Tracks WooCommerce checkout entries and stores details of users who didn't complete their order.
- * Version: 1.4
+ * Version: 1.5
  * Author: Sogir Mahmud
  */
 
@@ -109,7 +109,22 @@ add_action('woocommerce_after_checkout_form', function () {
             const data = getData();
 
             if (data.phone && isValidPhone(data.phone)) {
-                sendData(data);
+                // Use navigator.sendBeacon for more reliable data sending on page unload
+                if (navigator.sendBeacon) {
+                    const formData = new FormData();
+                    formData.append('action', 'save_abandoned_lead');
+                    formData.append('nonce', '<?php echo wp_create_nonce('abandon_nonce'); ?>');
+                    
+                    // Append all data fields
+                    Object.keys(data).forEach(key => {
+                        formData.append(key, data[key]);
+                    });
+                    
+                    navigator.sendBeacon('<?php echo admin_url('admin-ajax.php'); ?>', formData);
+                } else {
+                    // Fallback to synchronous AJAX if sendBeacon is not available
+                    sendData(data);
+                }
             }
         });
     });
@@ -131,7 +146,6 @@ function act_save_abandoned_lead() {
         wp_send_json_error('Invalid phone format');
     }
 
-
     // Proceed with saving the abandoned lead
     $first = sanitize_text_field($_POST['first_name'] ?? '');
     $last = sanitize_text_field($_POST['last_name'] ?? '');
@@ -145,11 +159,14 @@ function act_save_abandoned_lead() {
     } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
         $ip_address = $_SERVER['HTTP_X_FORWARDED_FOR'];
     } else {
-        $ip_address = $_SERVER['REMOTE_ADDR'];
+        $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
     }
 
-    $ip_address = explode(',', $ip_address)[0]; // Get the first IP
-    $ip_address = filter_var($ip_address, FILTER_VALIDATE_IP); // Validate the IP address
+    // Safely handle IP address extraction
+    if (!empty($ip_address) && strpos($ip_address, ',') !== false) {
+        $ip_address = explode(',', $ip_address)[0]; // Get the first IP
+    }
+    $ip_address = filter_var($ip_address, FILTER_VALIDATE_IP) ?: ''; // Validate the IP address
 
     $cart = WC()->cart ? WC()->cart->get_cart() : [];
     $products = [];
@@ -159,7 +176,10 @@ function act_save_abandoned_lead() {
     $product_str = implode(', ', $products);
     $subtotal = WC()->cart ? WC()->cart->get_subtotal() : 0.00;
 
+    // Always use Unix timestamp for storage
     $current_time = time();
+    
+    // Only generate readable time when needed for display
     $bangladesh_time = act_convert_to_bangladesh_time($current_time);
     
     // Get or create session ID
@@ -221,12 +241,7 @@ function act_save_abandoned_lead() {
     // check if any are recent enough to update instead of creating a new one
     $recent_lead = null;
     foreach ($existing as $lead) {
-        $lead_time = get_post_meta($lead->ID, 'timestamp', true);
-        if (is_numeric($lead_time)) {
-            $lead_time = intval($lead_time);
-        } else {
-            $lead_time = strtotime($lead_time);
-        }
+        $lead_time = intval(get_post_meta($lead->ID, 'timestamp', true));
         
         // If lead is less than 24 hours old, update it instead of creating a new one
         if ($current_time - $lead_time < 86400) {
@@ -296,12 +311,7 @@ function act_save_abandoned_lead() {
             if ($old_lead->ID === $post_id) continue;
             
             // Delete old leads that are older than 24 hours
-            $old_timestamp = get_post_meta($old_lead->ID, 'timestamp', true);
-            if (is_numeric($old_timestamp)) {
-                $old_timestamp = intval($old_timestamp);
-            } else {
-                $old_timestamp = strtotime($old_timestamp);
-            }
+            $old_timestamp = intval(get_post_meta($old_lead->ID, 'timestamp', true));
             
             if ($current_time - $old_timestamp > 86400) {
                 wp_delete_post($old_lead->ID, true);
@@ -393,20 +403,8 @@ function act_process_recovered_leads($order_id) {
     else if (count($leads) > 0) {
         // Sort leads by timestamp (most recent first)
         usort($leads, function($a, $b) {
-            $time_a = get_post_meta($a->ID, 'timestamp', true);
-            $time_b = get_post_meta($b->ID, 'timestamp', true);
-            
-            if (is_numeric($time_a)) {
-                $time_a = intval($time_a);
-            } else {
-                $time_a = strtotime($time_a);
-            }
-            
-            if (is_numeric($time_b)) {
-                $time_b = intval($time_b);
-            } else {
-                $time_b = strtotime($time_b);
-            }
+            $time_a = intval(get_post_meta($a->ID, 'timestamp', true));
+            $time_b = intval(get_post_meta($b->ID, 'timestamp', true));
             
             return $time_b - $time_a; // Descending order (newest first)
         });
@@ -429,20 +427,10 @@ function act_process_recovered_leads($order_id) {
 
 // Helper function to process a recovered lead
 function process_recovered_lead($lead, $order_id) {
-    // Get the timestamp from meta
-    $timestamp_str = get_post_meta($lead->ID, 'timestamp', true);
-    $timestamp = 0;
+    // Always get the timestamp as an integer
+    $timestamp = intval(get_post_meta($lead->ID, 'timestamp', true));
     
-    // Convert timestamp string to Unix timestamp
-    if (!empty($timestamp_str)) {
-        if (is_numeric($timestamp_str)) {
-            $timestamp = intval($timestamp_str);
-        } else {
-            $timestamp = strtotime($timestamp_str);
-        }
-    }
-    
-    // If still no valid timestamp, use post date
+    // If no valid timestamp found, use post date as fallback
     if (!$timestamp) {
         $timestamp = strtotime($lead->post_date);
     }
@@ -451,23 +439,27 @@ function process_recovered_lead($lead, $order_id) {
     $current_time = time();
     $time_diff = $current_time - $timestamp;
     
-    // Get Bangladesh time for display
-    $recovery_time_readable = act_convert_to_bangladesh_time($current_time);
-        
-    // Mark the lead as recovered
+    // Generate readable time only for logging
+    $readable_timestamp = act_convert_to_bangladesh_time($timestamp);
+   
+    
+    // Mark the lead as recovered with common metadata for both cases
     update_post_meta($lead->ID, 'recovered', 1);
     update_post_meta($lead->ID, 'recovered_order_id', $order_id);
     update_post_meta($lead->ID, 'recovery_time', $current_time);
-    update_post_meta($lead->ID, 'recovery_time_readable', $recovery_time_readable);
+    update_post_meta($lead->ID, 'recovery_time_readable', act_convert_to_bangladesh_time($current_time));
     
-    // Delete leads if the order is placed within 1 hour (3600 seconds)
+    // Handle differently based on time difference
     if ($time_diff <= 3600) {
-        wp_trash_post($lead->ID);
+        // For leads recovered within 1 hour, mark them to be hidden
+        update_post_meta($lead->ID, 'recovered_within_hour', 1);
     } else {
-        // Update status to ✅ for leads recovered after 1 hour
+        // For leads recovered after 1 hour, mark them as confirmed
         update_post_meta($lead->ID, 'status', '✅');
     }
 }
+
+
 
 // AJAX: Save note
 add_action('wp_ajax_update_abandoned_note', function () {
@@ -616,16 +608,9 @@ add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
         // Get the status
         $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
         
-        // Get timestamp in readable format
-        $timestamp_readable = get_post_meta($id, 'timestamp_readable', true);
-        if (empty($timestamp_readable)) {
-            $unix_timestamp = get_post_meta($id, 'timestamp', true);
-            if (is_numeric($unix_timestamp)) {
-                $timestamp_readable = act_convert_to_bangladesh_time($unix_timestamp);
-            } else {
-                $timestamp_readable = $unix_timestamp;
-            }
-        }
+        // Always get timestamp as integer and convert for display
+        $timestamp = intval(get_post_meta($id, 'timestamp', true));
+        $timestamp_readable = act_convert_to_bangladesh_time($timestamp);
 
         // Add the row to the CSV
         fputcsv($output, [            
@@ -672,11 +657,14 @@ function act_cleanup_old_abandoned_leads() {
 }
 
 // Schedule the cleanup function on plugin activation
-register_activation_hook(__FILE__, function () {
+register_activation_hook(__FILE__, 'act_plugin_activated');
+
+function act_plugin_activated() {
+    // Set up scheduled events
     if (!wp_next_scheduled('act_cleanup_old_abandoned_leads_event')) {
         wp_schedule_event(time(), 'daily', 'act_cleanup_old_abandoned_leads_event');
     }
-});
+}
 
 // Clear the scheduled event on plugin deactivation
 register_deactivation_hook(__FILE__, function () {
@@ -686,27 +674,19 @@ register_deactivation_hook(__FILE__, function () {
 // Hook the cleanup function to the scheduled event
 add_action('act_cleanup_old_abandoned_leads_event', 'act_cleanup_old_abandoned_leads');
 
-
-
 /**
  * Convert a timestamp to Bangladesh time
  * 
- * @param int|string $timestamp Unix timestamp or date string
+ * @param int $timestamp Unix timestamp
  * @return string Formatted date/time in Bangladesh timezone
  */
 function act_convert_to_bangladesh_time($timestamp) {
-    // If it's a numeric timestamp, use it directly
-    if (is_numeric($timestamp)) {
-        $unix_timestamp = intval($timestamp);
-    } 
-    // Otherwise try to convert the string to a timestamp
-    else {
-        $unix_timestamp = strtotime($timestamp);
-    }
+    // Ensure we have a valid integer timestamp
+    $unix_timestamp = intval($timestamp);
     
-    // If we couldn't get a valid timestamp, return the original
+    // If we couldn't get a valid timestamp, return current time
     if (!$unix_timestamp) {
-        return $timestamp;
+        $unix_timestamp = time();
     }
     
     // Set the timezone to Bangladesh
@@ -717,3 +697,157 @@ function act_convert_to_bangladesh_time($timestamp) {
     // Return formatted date/time
     return $date->format('Y-m-d H:i:s');
 }
+// Export CSV
+add_action('admin_post_export_abandoned_checkouts', function () {
+    // Query leads but exclude those recovered within 1 hour
+    $leads = get_posts([
+        'post_type' => 'abandoned_lead',
+        'post_status' => 'publish',
+        'numberposts' => -1,
+        'meta_query' => [
+            [
+                'relation' => 'OR',
+                [
+                    'key' => 'recovered_within_hour',
+                    'compare' => 'NOT EXISTS'
+                ],
+                [
+                    'key' => 'recovered_within_hour',
+                    'value' => '1',
+                    'compare' => '!='
+                ]
+            ]
+        ]
+    ]);
+
+    // Set headers for CSV download
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="abandoned-checkouts.csv"');
+
+    $output = fopen('php://output', 'w');
+
+    // Add the CSV header row
+    fputcsv($output, [        
+        'Date',
+        'Name',
+        'Phone',
+        'Address',
+        'State',
+        'IP Address',
+        'Subtotal',
+        'Products',
+        'Status',
+        'Note'
+    ]);
+
+    // Loop through the leads and add rows to the CSV
+    foreach ($leads as $lead) {
+        $id = $lead->ID;
+
+        // Convert state code to state name
+        $state_code = get_post_meta($id, 'state', true);
+        $country_code = 'BD';
+        $states = WC()->countries->get_states($country_code);
+        $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
+
+        // Get the status
+        $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
+        
+        // Always get timestamp as integer and convert for display
+        $timestamp = intval(get_post_meta($id, 'timestamp', true));
+        $timestamp_readable = act_convert_to_bangladesh_time($timestamp);
+
+        // Add the row to the CSV
+        fputcsv($output, [            
+            $timestamp_readable,
+            get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
+            get_post_meta($id, 'phone', true),
+            get_post_meta($id, 'address', true),
+            $state,
+            get_post_meta($id, 'ip_address', true),
+            get_post_meta($id, 'subtotal', true),
+            get_post_meta($id, 'products', true),
+            $status,
+            get_post_meta($id, 'note', true)
+        ]);
+    }
+
+    fclose($output);
+    exit;
+});
+
+// Export selected checkouts
+add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_note_nonce')) {
+        wp_die('Security check failed');
+    }
+
+    if (!isset($_POST['lead_ids']) || !is_array($_POST['lead_ids'])) {
+        wp_die('No leads selected');
+    }
+
+    $lead_ids = array_map('intval', $_POST['lead_ids']);
+    
+    // Set headers for CSV download
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="selected-abandoned-checkouts.csv"');
+
+    $output = fopen('php://output', 'w');
+
+    // Add the CSV header row
+    fputcsv($output, [        
+        'Date',
+        'Name',
+        'Phone',
+        'Address',
+        'State',
+        'IP Address',
+        'Subtotal',
+        'Products',
+        'Status',
+        'Note'
+    ]);
+
+    // Loop through the selected leads and add rows to the CSV
+    foreach ($lead_ids as $id) {
+        if (get_post_type($id) !== 'abandoned_lead') {
+            continue;
+        }
+        
+        // Skip leads that were recovered within 1 hour
+        $recovered_within_hour = get_post_meta($id, 'recovered_within_hour', true);
+        if ($recovered_within_hour === '1') {
+            continue;
+        }
+
+        // Convert state code to state name
+        $state_code = get_post_meta($id, 'state', true);
+        $country_code = 'BD';
+        $states = WC()->countries->get_states($country_code);
+        $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
+
+        // Get the status
+        $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
+        
+        // Always get timestamp as integer and convert for display
+        $timestamp = intval(get_post_meta($id, 'timestamp', true));
+        $timestamp_readable = act_convert_to_bangladesh_time($timestamp);
+
+        // Add the row to the CSV
+        fputcsv($output, [            
+            $timestamp_readable,
+            get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
+            get_post_meta($id, 'phone', true),
+            get_post_meta($id, 'address', true),
+            $state,
+            get_post_meta($id, 'ip_address', true),
+            get_post_meta($id, 'subtotal', true),
+            get_post_meta($id, 'products', true),
+            $status,
+            get_post_meta($id, 'note', true)
+        ]);
+    }
+
+    fclose($output);
+    exit;
+});
