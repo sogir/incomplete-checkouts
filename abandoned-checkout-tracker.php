@@ -311,7 +311,6 @@ function act_save_abandoned_lead() {
             
             if ($current_time - $old_timestamp > 86400) {
                 wp_delete_post($old_lead->ID, true);
-                error_log('Deleted old duplicate lead ID ' . $old_lead->ID . ' for phone ' . $phone);
             }
         }
     }
@@ -365,8 +364,6 @@ function act_process_recovered_leads($order_id) {
         'post_status' => 'publish',
         'numberposts' => -1
     ]);
-
-    error_log('Found ' . count($leads) . ' potential abandoned leads for recovery check');
     
     if (empty($leads)) {
         return; // No leads found
@@ -395,7 +392,6 @@ function act_process_recovered_leads($order_id) {
         foreach ($leads as $lead) {
             if ($lead->ID !== $session_lead->ID) {
                 wp_delete_post($lead->ID, true);
-                error_log('Deleted duplicate lead ID ' . $lead->ID . ' for phone ' . $phone);
             }
         }
     } 
@@ -428,7 +424,6 @@ function act_process_recovered_leads($order_id) {
         // Delete all other leads for this phone number
         for ($i = 1; $i < count($leads); $i++) {
             wp_delete_post($leads[$i]->ID, true);
-            error_log('Deleted older duplicate lead ID ' . $leads[$i]->ID . ' for phone ' . $phone);
         }
     }
     
@@ -456,16 +451,12 @@ function process_recovered_lead($lead, $order_id) {
     // If still no valid timestamp, use post date
     if (!$timestamp) {
         $timestamp = strtotime($lead->post_date);
-        error_log('Lead ID ' . $lead->ID . ': Using post_date as fallback timestamp');
     }
     
     // Calculate time difference in seconds
     $current_time = time();
     $time_diff = $current_time - $timestamp;
-    
-    error_log('Lead ID ' . $lead->ID . ': Created at ' . date('Y-m-d H:i:s', $timestamp) . 
-              ', Time diff: ' . gmdate('H:i:s', $time_diff) . ' (' . $time_diff . ' seconds)');
-    
+        
     // Mark the lead as recovered
     update_post_meta($lead->ID, 'recovered', 1);
     update_post_meta($lead->ID, 'recovered_order_id', $order_id);
@@ -473,12 +464,10 @@ function process_recovered_lead($lead, $order_id) {
     
     // Delete leads if the order is placed within 1 hour (3600 seconds)
     if ($time_diff <= 3600) {
-        error_log('Lead ID ' . $lead->ID . ': Deleting - recovered within 1 hour');
         wp_trash_post($lead->ID);
     } else {
         // Update status to ✅ for leads recovered after 1 hour
         update_post_meta($lead->ID, 'status', '✅');
-        error_log('Lead ID ' . $lead->ID . ': Retaining and marking as recovered (✅) - recovered after 1 hour');
     }
 }
 
@@ -580,6 +569,5 @@ function act_cleanup_old_abandoned_leads() {
     
     foreach ($old_leads as $lead) {
         wp_delete_post($lead->ID, true);
-        error_log('Cleanup: Deleted old abandoned lead ID ' . $lead->ID);
     }
 }
