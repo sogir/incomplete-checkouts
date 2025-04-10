@@ -351,6 +351,229 @@ function render_abandoned_admin_page() {
 }
 
 
+// function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, $date_filter = '') {
+//     $args = [
+//         'post_type' => 'abandoned_lead',
+//         'post_status' => 'publish',
+//         'orderby' => 'date',
+//         'order' => 'DESC',
+//         'posts_per_page' => $posts_per_page,
+//         'paged' => $paged,
+//     ];
+
+//     if ($search) {
+//         $args['meta_query'] = [
+//             'relation' => 'OR',
+//             [
+//                 'key' => 'first_name',
+//                 'value' => $search,
+//                 'compare' => 'LIKE',
+//             ],
+//             [
+//                 'key' => 'last_name',
+//                 'value' => $search,
+//                 'compare' => 'LIKE',
+//             ],
+//             [
+//                 'key' => 'phone',
+//                 'value' => $search,
+//                 'compare' => 'LIKE',
+//             ],
+//         ];
+//     }
+
+//     if ($date_filter) {
+//         $args['date_query'] = [
+//             [
+//                 'after' => $date_filter,
+//                 'before' => $date_filter . ' 23:59:59',
+//                 'inclusive' => true,
+//             ],
+//         ];
+//     }
+
+//         // Query for the current page
+//         $query = new WP_Query($args);
+
+//         // Query for the total number of leads (without pagination)
+//         $total_args = $args;
+//         unset($total_args['posts_per_page']);
+//         unset($total_args['paged']);
+//         $total_query = new WP_Query($total_args);
+//         $total_count = $total_query->found_posts;
+    
+//         // Calculate the range of items being shown
+//         $start_item = ($paged - 1) * $posts_per_page + 1;
+//         $end_item = min($paged * $posts_per_page, $total_count);
+
+//         echo '<table class="widefat striped">
+//         <thead>
+//             <tr>
+//                 <th>Date</th>
+//                 <th>Name</th>
+//                 <th>Phone</th>
+//                 <th>Address</th>
+//                 <th>State</th>
+//                 <th>IP Address</th>
+//                 <th>Subtotal</th>
+//                 <th>Products</th>
+//                 <th>Status</th>
+//                 <th>Note</th>
+//             </tr>
+//         </thead>
+//         <tbody>';
+
+//     if (!$query->have_posts()) {
+//         echo '<tr><td colspan="10">No abandoned leads found.</td></tr>';
+//     } else {
+//         while ($query->have_posts()) {
+//             $query->the_post();
+//             $id = get_the_ID();
+//             $first = get_post_meta($id, 'first_name', true);
+//             $last = get_post_meta($id, 'last_name', true);
+//             $name = esc_html(trim("$first $last"));
+//             $phone = esc_html(get_post_meta($id, 'phone', true));
+//             $addr = esc_html(get_post_meta($id, 'address', true));
+//             $state_code = get_post_meta($id, 'state', true);
+//             $country_code = 'BD';
+//             $states = WC()->countries->get_states($country_code);
+//             $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
+//             $ip_address = esc_html(get_post_meta($id, 'ip_address', true));
+//             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
+//             $subtotal = esc_html(number_format($subtotal_raw, 2));
+//             $products = esc_html(get_post_meta($id, 'products', true));
+//             $date = esc_html(get_post_meta($id, 'timestamp', true));
+//             $note = esc_textarea(get_post_meta($id, 'note', true));
+//             $status = get_post_meta($id, 'status', true) === '✅' ? '✅' : '❌';
+
+//             echo "<tr id='row-$id'>
+//                 <td>$date</td>
+//                     <td>
+//                         <div class='text-container'>$name</div>
+//                         <div class='button-container'>
+//                             <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
+//                         </div>
+//                     </td>
+//                     <td>
+//                         <div class='text-container'>$phone</div>
+//                         <div class='button-container'>
+//                             <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
+//                             <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
+//                         </div>
+//                     </td>
+//                     <td>
+//                 <div class='text-container'>$addr</div>
+//                 <div class='button-container'>
+//             <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
+//         </div>
+//     </td>
+//     <td>
+//                     <div class='text-container'>$state</div>
+//                     <div class='button-container'>
+//                         <button class='copy-button' onclick='copyToClipboard(\"$state\", this)'>Copy</button>
+//                     </div>
+//                 </td>
+//     <td>$ip_address</td>
+//     <td>$subtotal</td>
+//     <td>$products</td>
+//     <td>
+//         <span id='status-$id'>$status</span>
+//         <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
+//         <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
+//     </td>
+//     <td>
+//         <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
+//         <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
+//     </td>
+// </tr>";
+//         }
+//     }
+
+//     echo '</tbody></table>';
+
+//     $total_pages = $query->max_num_pages;
+//     if ($total_pages > 1) {
+//         echo '<div class="tablenav"><div class="tablenav-pages">';
+//         echo paginate_links([
+//             'base' => add_query_arg('paged', '%#%'),
+//             'format' => '',
+//             'current' => $paged,
+//             'total' => $total_pages,
+//         ]);
+//         echo '</div></div>';
+//     }
+
+
+//     // Showing X of Y abandoned checkouts
+//     echo '<div class="table-summary">
+//         Showing ' . $start_item . ' to ' . $end_item . ' of ' . $total_count . ' abandoned checkouts
+//     </div>';
+
+//     wp_reset_postdata();
+// }
+
+// // Export CSV
+// add_action('admin_post_export_abandoned_checkouts', function () {
+//     $leads = get_posts([
+//         'post_type' => 'abandoned_lead',
+//         'post_status' => 'publish',
+//         'numberposts' => -1
+//     ]);
+
+//     // Set headers for CSV download
+//     header('Content-Type: text/csv');
+//     header('Content-Disposition: attachment; filename="abandoned-checkouts.csv"');
+
+//     $output = fopen('php://output', 'w');
+
+//     // Add the CSV header row
+//     fputcsv($output, [        
+//         'Date',
+//         'Name',
+//         'Phone',
+//         'Address',
+//         'State',
+//         'IP Address',
+//         'Subtotal',
+//         'Products',
+//         'Status', // Add the status column
+//         'Note'
+//     ]);
+
+//     // Loop through the leads and add rows to the CSV
+//     foreach ($leads as $lead) {
+//         $id = $lead->ID;
+
+//         // Convert state code to state name
+//         $state_code = get_post_meta($id, 'state', true);
+//         $country_code = 'BD'; // Replace with your store's default country code
+//         $states = WC()->countries->get_states($country_code);
+//         $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
+
+//         // Get the status
+//         $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
+
+//         // Add the row to the CSV
+//         fputcsv($output, [            
+//             get_post_meta($id, 'timestamp', true),
+//             get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
+//             get_post_meta($id, 'phone', true),
+//             get_post_meta($id, 'address', true),
+//             $state, // Use the readable state name
+//             get_post_meta($id, 'ip_address', true), // Include IP address
+//             get_post_meta($id, 'subtotal', true),
+//             get_post_meta($id, 'products', true),
+//             $status, // Include the status column
+//             get_post_meta($id, 'note', true)
+//         ]);
+//     }
+
+//     fclose($output);
+//     exit;
+// });
+
+
+
 function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, $date_filter = '') {
     $args = [
         'post_type' => 'abandoned_lead',
@@ -392,36 +615,36 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
         ];
     }
 
-        // Query for the current page
-        $query = new WP_Query($args);
+    // Query for the current page
+    $query = new WP_Query($args);
 
-        // Query for the total number of leads (without pagination)
-        $total_args = $args;
-        unset($total_args['posts_per_page']);
-        unset($total_args['paged']);
-        $total_query = new WP_Query($total_args);
-        $total_count = $total_query->found_posts;
-    
-        // Calculate the range of items being shown
-        $start_item = ($paged - 1) * $posts_per_page + 1;
-        $end_item = min($paged * $posts_per_page, $total_count);
+    // Query for the total number of leads (without pagination)
+    $total_args = $args;
+    unset($total_args['posts_per_page']);
+    unset($total_args['paged']);
+    $total_query = new WP_Query($total_args);
+    $total_count = $total_query->found_posts;
 
-        echo '<table class="widefat striped">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Address</th>
-                <th>State</th>
-                <th>IP Address</th>
-                <th>Subtotal</th>
-                <th>Products</th>
-                <th>Status</th>
-                <th>Note</th>
-            </tr>
-        </thead>
-        <tbody>';
+    // Calculate the range of items being shown
+    $start_item = ($paged - 1) * $posts_per_page + 1;
+    $end_item = min($paged * $posts_per_page, $total_count);
+
+    echo '<table class="widefat striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Address</th>
+            <th>State</th>
+            <th>IP Address</th>
+            <th>Subtotal</th>
+            <th>Products</th>
+            <th>Status</th>
+            <th>Note</th>
+        </tr>
+    </thead>
+    <tbody>';
 
     if (!$query->have_posts()) {
         echo '<tr><td colspan="10">No abandoned leads found.</td></tr>';
@@ -442,50 +665,63 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
             $subtotal_raw = floatval(get_post_meta($id, 'subtotal', true));
             $subtotal = esc_html(number_format($subtotal_raw, 2));
             $products = esc_html(get_post_meta($id, 'products', true));
-            $date = esc_html(get_post_meta($id, 'timestamp', true));
+            
+            // Get timestamp in readable format
+            $timestamp_readable = get_post_meta($id, 'timestamp_readable', true);
+            if (empty($timestamp_readable)) {
+                // If timestamp_readable doesn't exist, convert the Unix timestamp
+                $unix_timestamp = get_post_meta($id, 'timestamp', true);
+                if (is_numeric($unix_timestamp)) {
+                    $timestamp_readable = date('Y-m-d H:i:s', intval($unix_timestamp));
+                } else {
+                    $timestamp_readable = $unix_timestamp; // Just use whatever is stored
+                }
+            }
+            $date = esc_html($timestamp_readable);
+            
             $note = esc_textarea(get_post_meta($id, 'note', true));
             $status = get_post_meta($id, 'status', true) === '✅' ? '✅' : '❌';
 
             echo "<tr id='row-$id'>
                 <td>$date</td>
-                    <td>
-                        <div class='text-container'>$name</div>
-                        <div class='button-container'>
-                            <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
-                        </div>
-                    </td>
-                    <td>
-                        <div class='text-container'>$phone</div>
-                        <div class='button-container'>
-                            <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
-                            <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
-                        </div>
-                    </td>
-                    <td>
-                <div class='text-container'>$addr</div>
-                <div class='button-container'>
-            <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
-        </div>
-    </td>
-    <td>
+                <td>
+                    <div class='text-container'>$name</div>
+                    <div class='button-container'>
+                        <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
+                    </div>
+                </td>
+                <td>
+                    <div class='text-container'>$phone</div>
+                    <div class='button-container'>
+                        <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
+                        <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
+                    </div>
+                </td>
+                <td>
+                    <div class='text-container'>$addr</div>
+                    <div class='button-container'>
+                        <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
+                    </div>
+                </td>
+                <td>
                     <div class='text-container'>$state</div>
                     <div class='button-container'>
                         <button class='copy-button' onclick='copyToClipboard(\"$state\", this)'>Copy</button>
                     </div>
                 </td>
-    <td>$ip_address</td>
-    <td>$subtotal</td>
-    <td>$products</td>
-    <td>
-        <span id='status-$id'>$status</span>
-        <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
-        <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
-    </td>
-    <td>
-        <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
-        <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
-    </td>
-</tr>";
+                <td>$ip_address</td>
+                <td>$subtotal</td>
+                <td>$products</td>
+                <td>
+                    <span id='status-$id'>$status</span>
+                    <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
+                    <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
+                </td>
+                <td>
+                    <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
+                    <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
+                </td>
+            </tr>";
         }
     }
 
@@ -502,7 +738,6 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
         ]);
         echo '</div></div>';
     }
-
 
     // Showing X of Y abandoned checkouts
     echo '<div class="table-summary">
@@ -552,10 +787,22 @@ add_action('admin_post_export_abandoned_checkouts', function () {
 
         // Get the status
         $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
+        
+        // Get timestamp in readable format for CSV
+        $timestamp_readable = get_post_meta($id, 'timestamp_readable', true);
+        if (empty($timestamp_readable)) {
+            // If timestamp_readable doesn't exist, convert the Unix timestamp
+            $unix_timestamp = get_post_meta($id, 'timestamp', true);
+            if (is_numeric($unix_timestamp)) {
+                $timestamp_readable = date('Y-m-d H:i:s', intval($unix_timestamp));
+            } else {
+                $timestamp_readable = $unix_timestamp; // Just use whatever is stored
+            }
+        }
 
         // Add the row to the CSV
         fputcsv($output, [            
-            get_post_meta($id, 'timestamp', true),
+            $timestamp_readable,
             get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
             get_post_meta($id, 'phone', true),
             get_post_meta($id, 'address', true),
