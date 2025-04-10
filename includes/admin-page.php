@@ -48,15 +48,31 @@ function render_abandoned_admin_page() {
             </div>
         </form>
 
-        <!-- Export CSV Button -->
-        <form method="post" action="' . admin_url('admin-post.php') . '" style="margin-bottom: 20px;">
-            <input type="hidden" name="action" value="export_abandoned_checkouts">
-            <input type="submit" class="button button-secondary" value="Export CSV">
-        </form>
+        <!-- Bulk Actions and Export Buttons -->
+        <div class="tablenav top">
+            <div class="alignleft actions bulkactions">
+                <label for="bulk-action-selector-top" class="screen-reader-text">Select bulk action</label>
+                <select name="action" id="bulk-action-selector-top">
+                    <option value="-1">Bulk Actions</option>
+                    <option value="delete">Delete</option>
+                    <option value="export">Export Selected</option>
+                </select>
+                <button id="doaction" class="button action">Apply</button>
+            </div>
+            
+            <!-- Export All CSV Button -->
+            <div class="alignright">
+                <form method="post" action="' . admin_url('admin-post.php') . '" style="margin-bottom: 20px;">
+                    <input type="hidden" name="action" value="export_abandoned_checkouts">
+                    <input type="submit" class="button button-secondary" value="Export All as CSV">
+                </form>
+            </div>
+            <div class="clear"></div>
+        </div>
 
         <div id="abandoned-table-wrap">';
 
-        // Add custom CSS for pagination and hover effects
+        // Add custom CSS for pagination, hover effects, and bulk actions
         echo '<style>
         .tablenav-pages {
             display: flex;
@@ -153,11 +169,29 @@ function render_abandoned_admin_page() {
             border: 1px solid #ccc; /* Add border for clarity */
             border-radius: 4px; /* Rounded corners */
             width: auto; /* Automatically adjust width */
-            min-width: 80px; /* Ensure minimum width to prevent overlap */
-            text-align: center; /* Center-align the text */
+            min-width: 150px; /* Ensure minimum width to prevent overlap */
+            text-align: left; /* Center-align the text */
         }   
 
-        
+        /* Bulk actions styling */
+        .bulkactions {
+            margin-bottom: 10px;
+        }
+
+        #bulk-action-selector-top {
+            margin-right: 5px;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .lead-checkbox {
+            margin-left: 8px;
+        }
+
+        #select-all-checkouts {
+            margin-left: 8px;
+        }
         </style>';
 
     // Render the abandoned leads table
@@ -190,20 +224,24 @@ function render_abandoned_admin_page() {
 
     // Add CSS for hover effects
     echo '<style>
+    /* Base styles for text and button containers */
     .text-container {
         margin-bottom: 5px;
     }
 
     .button-container {
         display: none;
+        margin-top: 5px;
     }
 
+    /* Show buttons on row hover */
     tr:hover .button-container {
         display: block;
     }
 
+    /* Base button styles */
     .copy-button, .call-button {
-        margin-top: 5px;
+        margin-right: 5px;
         padding: 5px 10px;
         font-size: 12px;
         cursor: pointer;
@@ -217,18 +255,89 @@ function render_abandoned_admin_page() {
         background-color: #005a9c;
     }
 
+    /* Status action buttons */
+    .button-container .button-small {
+        margin-right: 5px;
+        padding: 5px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        background-color: #007cba;
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+    }
 
-    // table summary text
-    .table-summary {
-        margin-top: 10px;
-        text-align: left;
-        font-size: 14px;
-        color: #333;
+    .button-container .button-small:hover {
+        background-color: #005a9c;
+        
+        color: white;
+    }
+
+    /* Specific styling for delete button */
+    .button-container .delete-button {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .button-container .delete-button:hover {
+        background-color: #c82333;
+    }
+
+    /* Note update button - always visible */
+    .button-save-note {
+        margin-top: 5px;
+        padding: 5px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        background-color: #007cba;
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+    }
+
+    .button-save-note:hover {
+        background-color: #005a9c;
+        color: white;
     }
 </style>';
 
-    // Add the JavaScript snippet for handling status updates
+    // Add the JavaScript snippet for handling status updates and bulk actions
     echo '<script>
+    jQuery(document).ready(function($) {
+        // Select all checkboxes
+        $("#select-all-checkouts").on("change", function() {
+            $(".lead-checkbox").prop("checked", $(this).prop("checked"));
+        });
+        
+        // Handle bulk actions
+        $("#doaction").on("click", function(e) {
+            e.preventDefault();
+            
+            const selectedAction = $("#bulk-action-selector-top").val();
+            if (selectedAction === "-1") {
+                alert("Please select an action");
+                return;
+            }
+            
+            const selectedLeads = $(".lead-checkbox:checked").map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (selectedLeads.length === 0) {
+                alert("Please select at least one checkout");
+                return;
+            }
+            
+            if (selectedAction === "delete") {
+                if (confirm(`Are you sure you want to delete ${selectedLeads.length} selected checkouts?`)) {
+                    bulkDeleteLeads(selectedLeads);
+                }
+            } else if (selectedAction === "export") {
+                bulkExportLeads(selectedLeads);
+            }
+        });
+    });
+
     const abandon_nonce = "' . $nonce . '";
 
     function updateStatus(id) {
@@ -265,36 +374,36 @@ function render_abandoned_admin_page() {
     }
 
     function deleteLead(id) {
-    if (!confirm("Are you sure you want to delete this lead?")) {
-        return;
-    }
-
-    let deleteButton = document.querySelector("#row-" + id + " .delete-button");
-    deleteButton.disabled = true;
-    deleteButton.textContent = "Deleting...";
-
-    fetch(ajaxurl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-            action: "delete_abandoned_lead",
-            lead_id: id,
-            nonce: abandon_nonce
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById("row-" + id).remove();
-        } else {
-            alert(data.data?.reason || "Failed to delete lead.");
+        if (!confirm("Are you sure you want to delete this lead?")) {
+            return;
         }
-    })
-    .finally(() => {
-        deleteButton.disabled = false;
-        deleteButton.textContent = "Delete";
-    });
-}
+
+        let deleteButton = document.querySelector("#row-" + id + " .delete-button");
+        deleteButton.disabled = true;
+        deleteButton.textContent = "Deleting...";
+
+        fetch(ajaxurl, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                action: "delete_abandoned_lead",
+                lead_id: id,
+                nonce: abandon_nonce
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById("row-" + id).remove();
+            } else {
+                alert(data.data?.reason || "Failed to delete lead.");
+            }
+        })
+        .finally(() => {
+            deleteButton.disabled = false;
+            deleteButton.textContent = "Delete";
+        });
+    }
 
     function saveNote(id) {
         let note = document.getElementById("note-" + id).value;
@@ -325,28 +434,101 @@ function render_abandoned_admin_page() {
                 nonce: abandon_nonce
             })
         })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.success) {
-                    successMessage.textContent = "Note saved ✅";
-                    successMessage.style.color = "green";
-                } else {
-                    successMessage.textContent = "Failed to save ❌";
-                    successMessage.style.color = "red";
-                    console.error(data.data?.reason || "Unknown error");
-                }
-            })
-            .finally(() => {
-                saveButton.disabled = false;
-                saveButton.textContent = "Update";
+        .then((res) => res.json())
+        .then((data) => {
+            if (data.success) {
+                successMessage.textContent = "Note saved ✅";
+                successMessage.style.color = "green";
+            } else {
+                successMessage.textContent = "Failed to save ❌";
+                successMessage.style.color = "red";
+                console.error(data.data?.reason || "Unknown error");
+            }
+        })
+        .finally(() => {
+            saveButton.disabled = false;
+            saveButton.textContent = "Update";
 
-                // Clear the success message after 2 seconds
-                setTimeout(() => {
-                    successMessage.textContent = "";
-                }, 1500);
-            });
+            // Clear the success message after 2 seconds
+            setTimeout(() => {
+                successMessage.textContent = "";
+            }, 1500);
+        });
     }
    
+    // Function to handle bulk deletion
+    function bulkDeleteLeads(leadIds) {
+        const $button = jQuery("#doaction");
+        $button.prop("disabled", true).text("Deleting...");
+        
+        jQuery.ajax({
+            url: ajaxurl,
+            type: "POST",
+            data: {
+                action: "bulk_delete_abandoned_leads",
+                lead_ids: leadIds,
+                nonce: abandon_nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Remove deleted rows from the table
+                    leadIds.forEach(id => {
+                        jQuery(`#row-${id}`).remove();
+                    });
+                    alert(`Successfully deleted ${response.data.deleted} checkouts`);
+                } else {
+                    alert("Error: " + (response.data?.reason || "Unknown error"));
+                }
+            },
+            error: function() {
+                alert("Server error occurred");
+            },
+            complete: function() {
+                $button.prop("disabled", false).text("Apply");
+                // Uncheck the select all checkbox
+                jQuery("#select-all-checkouts").prop("checked", false);
+            }
+        });
+    }
+
+    // Function to handle bulk export
+    function bulkExportLeads(leadIds) {
+        // Create a form to submit for CSV download
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = ajaxurl;
+        
+        // Add action parameter
+        const actionInput = document.createElement("input");
+        actionInput.type = "hidden";
+        actionInput.name = "action";
+        actionInput.value = "export_selected_abandoned_checkouts";
+        form.appendChild(actionInput);
+        
+        // Add nonce parameter
+        const nonceInput = document.createElement("input");
+        nonceInput.type = "hidden";
+        nonceInput.name = "nonce";
+        nonceInput.value = abandon_nonce;
+        form.appendChild(nonceInput);
+        
+        // Add lead IDs parameter
+        leadIds.forEach(id => {
+            const leadInput = document.createElement("input");
+            leadInput.type = "hidden";
+            leadInput.name = "lead_ids[]";
+            leadInput.value = id;
+            form.appendChild(leadInput);
+        });
+        
+        // Submit the form
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        
+        // Uncheck the select all checkbox
+        jQuery("#select-all-checkouts").prop("checked", false);
+    }
     </script>';
 }
 
@@ -408,6 +590,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
     echo '<table class="widefat striped">
     <thead>
         <tr>
+            <th><input type="checkbox" id="select-all-checkouts"></th>
             <th>Date</th>
             <th>Name</th>
             <th>Phone</th>
@@ -423,7 +606,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
     <tbody>';
 
     if (!$query->have_posts()) {
-        echo '<tr><td colspan="10">No abandoned leads found.</td></tr>';
+        echo '<tr><td colspan="11">No abandoned leads found.</td></tr>';
     } else {
         while ($query->have_posts()) {
             $query->the_post();
@@ -459,45 +642,48 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
             $status = get_post_meta($id, 'status', true) === '✅' ? '✅' : '❌';
 
             echo "<tr id='row-$id'>
-                <td>$date</td>
-                <td>
-                    <div class='text-container'>$name</div>
-                    <div class='button-container'>
-                        <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
-                    </div>
-                </td>
-                <td>
-                    <div class='text-container'>$phone</div>
-                    <div class='button-container'>
-                        <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
-                        <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
-                    </div>
-                </td>
-                <td>
-                    <div class='text-container'>$addr</div>
-                    <div class='button-container'>
-                        <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
-                    </div>
-                </td>
-                <td>
-                    <div class='text-container'>$state</div>
-                    <div class='button-container'>
-                        <button class='copy-button' onclick='copyToClipboard(\"$state\", this)'>Copy</button>
-                    </div>
-                </td>
-                <td>$ip_address</td>
-                <td>$subtotal</td>
-                <td>$products</td>
-                <td>
-                    <span id='status-$id'>$status</span>
-                    <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
-                    <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
-                </td>
-                <td>
-                    <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
-                    <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
-                </td>
-            </tr>";
+    <td><input type='checkbox' class='lead-checkbox' value='$id'></td>
+    <td>$date</td>
+    <td>
+        <div class='text-container'>$name</div>
+        <div class='button-container'>
+            <button class='copy-button' onclick='copyToClipboard(\"$name\", this)'>Copy</button>
+        </div>
+    </td>
+    <td>
+        <div class='text-container'>$phone</div>
+        <div class='button-container'>
+            <button class='call-button' onclick='callPhone(\"$phone\")'>Call</button>
+            <button class='copy-button' onclick='copyToClipboard(\"$phone\", this)'>Copy</button>
+        </div>
+    </td>
+    <td>
+        <div class='text-container'>$addr</div>
+        <div class='button-container'>
+            <button class='copy-button' onclick='copyToClipboard(\"$addr\", this)'>Copy</button>
+        </div>
+    </td>
+    <td>
+        <div class='text-container'>$state</div>
+        <div class='button-container'>
+            <button class='copy-button' onclick='copyToClipboard(\"$state\", this)'>Copy</button>
+        </div>
+    </td>
+    <td>$ip_address</td>
+    <td>$subtotal</td>
+    <td>$products</td>
+    <td>
+        <div class='text-container'><span id='status-$id'>$status</span></div>
+        <div class='button-container'>
+            <button class='button button-small' onclick='updateStatus($id)'>Toggle</button>
+            <button class='button button-small delete-button' onclick='deleteLead($id)'>Delete</button>
+        </div>
+    </td>
+    <td>
+        <textarea id='note-$id' rows='2' style='width:100%;'>$note</textarea>
+        <button class='button button-small button-save-note' onclick='saveNote($id)'>Update</button>
+    </td>
+</tr>";
         }
     }
 
