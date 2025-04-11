@@ -42,7 +42,7 @@ function render_abandoned_admin_page() {
     echo '<div class="wrap">
     <h1>Incomplete Checkouts</h1>
         <form method="get" style="margin-bottom: 20px; display: flex; align-items: center; gap: 20px;">
-            <input type="hidden" name="page" value="abandoned-checkouts">
+            <input type="hidden" name="page" value="incomplete-checkouts">
 
             <!-- Search Field -->
             <div>
