@@ -18,7 +18,7 @@ function render_settings_page() {
     $cleanup_interval = get_option('abandoned_cleanup_interval', 7); // Default to 7 days
 
     echo '<div class="wrap">';
-    echo '<h1>Abandoned Checkout Settings</h1>';
+    echo '<h1>Incomplete Checkout Settings</h1>';
     echo '<form method="post">';
     echo '<table class="form-table">';
     
