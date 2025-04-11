@@ -2,29 +2,30 @@
 if (!defined('ABSPATH')) exit;
 
 // Admin menu
-    add_action('admin_menu', function () {
-    add_menu_page('Abandoned Checkouts', 'Abandoned Checkouts', 'manage_woocommerce', 'abandoned-checkouts', 'render_abandoned_admin_page', 'dashicons-cart');
+add_action('admin_menu', function () {
+    add_menu_page('Incomplete Checkouts', 'Incomplete Checkouts', 'manage_woocommerce', 'incomplete-checkouts', 'render_abandoned_admin_page', 'dashicons-cart');
     
     // Submenu for Analytics
     add_submenu_page(
-        'abandoned-checkouts',
-        'Abandoned Checkout Analytics',
+        'incomplete-checkouts',
+        'Incomplete Checkout Analytics',
         'Analytics',
         'manage_woocommerce',
-        'abandoned-checkout-analytics',
+        'incomplete-checkout-analytics',
         'render_abandoned_analytics_page'
     );
 
     // Submenu for Settings
     add_submenu_page(
-        'abandoned-checkouts', // Parent slug
+        'incomplete-checkouts', // Parent slug
         'Settings', // Page title
         'Settings', // Menu title
         'manage_woocommerce', // Capability
-        'abandoned-checkouts-settings', // Menu slug
+        'incomplete-checkouts-settings', // Menu slug
         'render_settings_page' // Callback function
     );
 });
+
 
 // Callback functions for the pages
 require_once plugin_dir_path(__FILE__) . 'analytics-page.php';
@@ -39,7 +40,7 @@ function render_abandoned_admin_page() {
     $items_per_page = isset($_GET['items_per_page']) ? intval($_GET['items_per_page']) : 10;
 
     echo '<div class="wrap">
-        <h1>Abandoned Checkouts</h1>
+    <h1>Incomplete Checkouts</h1>
         <form method="get" style="margin-bottom: 20px; display: flex; align-items: center; gap: 20px;">
             <input type="hidden" name="page" value="abandoned-checkouts">
 
@@ -770,7 +771,7 @@ function render_abandoned_table($search = '', $paged = 1, $posts_per_page = 10, 
 
     // Showing X of Y abandoned checkouts
     echo '<div class="table-summary">
-        Showing ' . $start_item . ' to ' . $end_item . ' of ' . $total_count . ' abandoned checkouts
+        Showing ' . $start_item . ' to ' . $end_item . ' of ' . $total_count . ' incomplete checkouts
     </div>';
 
     wp_reset_postdata();
