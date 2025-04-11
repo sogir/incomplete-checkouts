@@ -631,18 +631,56 @@ add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
     exit;
 });
 
+
+// Scheduled event
+
+// Schedule the cleanup function on plugin activation
+register_activation_hook(__FILE__, 'act_plugin_activated');
+
+function act_plugin_activated() {
+    $cleanup_interval = get_option('abandoned_cleanup_interval', 7); // Default to 7 days
+    act_update_cleanup_schedule();
+}
+
+// Clear the scheduled event on plugin deactivation
+register_deactivation_hook(__FILE__, function () {
+    wp_clear_scheduled_hook('act_cleanup_old_abandoned_leads_event');
+});
+
 /**
- * Cleanup abandoned leads older than 7 days.
+ * Register custom cron schedules
+ */
+add_filter('cron_schedules', 'act_add_cron_schedules');
+function act_add_cron_schedules($schedules) {
+    // Add a daily schedule if it doesn't exist
+    if (!isset($schedules['daily'])) {
+        $schedules['daily'] = array(
+            'interval' => 86400, // 24 hours in seconds
+            'display'  => __('Once Daily')
+        );
+    }
+    
+    return $schedules;
+}
+
+/**
+ * Cleanup abandoned leads older than the specified interval.
+ * This function runs on the scheduled cron event.
  */
 function act_cleanup_old_abandoned_leads() {
-    $seven_days_ago = time() - 604800; // 7 days in seconds
-
+    $cleanup_interval = get_option('abandoned_cleanup_interval', 7); // Default to 7 days
+    $interval_in_seconds = $cleanup_interval * 86400; // Convert days to seconds
+    $cutoff_time = time() - $interval_in_seconds;
+    
+    // Log the cleanup start (optional, for debugging)
+    error_log('Starting abandoned checkout cleanup. Removing leads older than ' . $cleanup_interval . ' days.');
+    
     $old_leads = get_posts([
         'post_type' => 'abandoned_lead',
         'meta_query' => [
             [
                 'key' => 'timestamp',
-                'value' => $seven_days_ago,
+                'value' => $cutoff_time,
                 'compare' => '<',
                 'type' => 'NUMERIC'
             ]
@@ -651,28 +689,199 @@ function act_cleanup_old_abandoned_leads() {
         'numberposts' => -1 // Get all matching leads
     ]);
 
+    $count = 0;
     foreach ($old_leads as $lead) {
         wp_delete_post($lead->ID, true); // Force delete the post
+        $count++;
     }
+    
+    // Log the cleanup completion (optional, for debugging)
+    error_log('Abandoned checkout cleanup completed. Removed ' . $count . ' old leads.');
+    
+    // Update the last run time
+    update_option('act_last_cleanup_time', time());
 }
-
-// Schedule the cleanup function on plugin activation
-register_activation_hook(__FILE__, 'act_plugin_activated');
-
-function act_plugin_activated() {
-    // Set up scheduled events
-    if (!wp_next_scheduled('act_cleanup_old_abandoned_leads_event')) {
-        wp_schedule_event(time(), 'daily', 'act_cleanup_old_abandoned_leads_event');
-    }
-}
-
-// Clear the scheduled event on plugin deactivation
-register_deactivation_hook(__FILE__, function () {
-    wp_clear_scheduled_hook('act_cleanup_old_abandoned_leads_event');
-});
 
 // Hook the cleanup function to the scheduled event
 add_action('act_cleanup_old_abandoned_leads_event', 'act_cleanup_old_abandoned_leads');
+
+/**
+ * Update the cleanup schedule.
+ * This ensures the cleanup runs daily regardless of the interval setting.
+ * The interval setting determines how old leads must be before they're deleted.
+ */
+function act_update_cleanup_schedule() {
+    // Clear the existing scheduled event
+    wp_clear_scheduled_hook('act_cleanup_old_abandoned_leads_event');
+    
+    // Schedule the new event to run daily
+    if (!wp_next_scheduled('act_cleanup_old_abandoned_leads_event')) {
+        wp_schedule_event(time(), 'daily', 'act_cleanup_old_abandoned_leads_event');
+    }
+    
+    // Update the last schedule time
+    update_option('act_cleanup_schedule_updated', time());
+}
+
+/**
+ * Add a settings field to display the next scheduled cleanup time
+ */
+function act_display_next_cleanup_time() {
+    $next_scheduled = wp_next_scheduled('act_cleanup_old_abandoned_leads_event');
+    $last_run = get_option('act_last_cleanup_time', 0);
+    
+    echo '<tr>';
+    echo '<th scope="row">Cleanup Status</th>';
+    echo '<td>';
+    
+    if ($next_scheduled) {
+        $next_time = act_convert_to_bangladesh_time($next_scheduled);
+        echo '<p><strong>Next scheduled cleanup:</strong> ' . esc_html($next_time) . '</p>';
+    } else {
+        echo '<p><strong>Status:</strong> <span style="color:red;">Not scheduled</span></p>';
+        echo '<p><button type="button" id="schedule-cleanup-now" class="button">Schedule Cleanup Now</button></p>';
+    }
+    
+    if ($last_run > 0) {
+        $last_time = act_convert_to_bangladesh_time($last_run);
+        echo '<p><strong>Last cleanup run:</strong> ' . esc_html($last_time) . '</p>';
+    }
+    
+    echo '</td>';
+    echo '</tr>';
+    
+    // Add JavaScript to handle the "Schedule Now" button
+    ?>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('#schedule-cleanup-now').on('click', function() {
+            $(this).prop('disabled', true).text('Scheduling...');
+            
+            $.post(ajaxurl, {
+                action: 'schedule_cleanup_now',
+                nonce: '<?php echo wp_create_nonce('schedule_cleanup_nonce'); ?>'
+            }).done(function(response) {
+                if (response.success) {
+                    alert('Cleanup scheduled successfully!');
+                    location.reload();
+                } else {
+                    alert('Failed to schedule cleanup: ' + response.data.message);
+                    $('#schedule-cleanup-now').prop('disabled', false).text('Schedule Cleanup Now');
+                }
+            }).fail(function() {
+                alert('Failed to schedule cleanup. Please try again.');
+                $('#schedule-cleanup-now').prop('disabled', false).text('Schedule Cleanup Now');
+            });
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
+ * AJAX handler for manually scheduling the cleanup
+ */
+add_action('wp_ajax_schedule_cleanup_now', function() {
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'Permission denied']);
+    }
+    
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'schedule_cleanup_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+    }
+    
+    act_update_cleanup_schedule();
+    wp_send_json_success(['message' => 'Cleanup scheduled successfully']);
+});
+
+/**
+ * Add a button to run the cleanup manually
+ */
+function act_add_manual_cleanup_button() {
+    echo '<tr>';
+    echo '<th scope="row">Manual Cleanup</th>';
+    echo '<td>';
+    echo '<button type="button" id="run-cleanup-now" class="button">Run Cleanup Now</button>';
+    echo '<p class="description">This will immediately delete abandoned leads older than the specified interval.</p>';
+    echo '</td>';
+    echo '</tr>';
+    
+    // Add JavaScript to handle the button click
+    ?>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('#run-cleanup-now').on('click', function() {
+            if (!confirm('Are you sure you want to run the cleanup now? This will permanently delete old abandoned leads.')) {
+                return;
+            }
+            
+            $(this).prop('disabled', true).text('Running...');
+            
+            $.post(ajaxurl, {
+                action: 'run_cleanup_now',
+                nonce: '<?php echo wp_create_nonce('run_cleanup_nonce'); ?>'
+            }).done(function(response) {
+                if (response.success) {
+                    alert('Cleanup completed! ' + response.data.count + ' leads were removed.');
+                    location.reload();
+                } else {
+                    alert('Failed to run cleanup: ' + response.data.message);
+                    $('#run-cleanup-now').prop('disabled', false).text('Run Cleanup Now');
+                }
+            }).fail(function() {
+                alert('Failed to run cleanup. Please try again.');
+                $('#run-cleanup-now').prop('disabled', false).text('Run Cleanup Now');
+            });
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
+ * AJAX handler for manually running the cleanup
+ */
+add_action('wp_ajax_run_cleanup_now', function() {
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'Permission denied']);
+    }
+    
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'run_cleanup_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+    }
+    
+    // Run the cleanup function
+    $cleanup_interval = get_option('abandoned_cleanup_interval', 7);
+    $interval_in_seconds = $cleanup_interval * 86400;
+    $cutoff_time = time() - $interval_in_seconds;
+    
+    $old_leads = get_posts([
+        'post_type' => 'abandoned_lead',
+        'meta_query' => [
+            [
+                'key' => 'timestamp',
+                'value' => $cutoff_time,
+                'compare' => '<',
+                'type' => 'NUMERIC'
+            ]
+        ],
+        'post_status' => 'publish',
+        'numberposts' => -1
+    ]);
+
+    $count = 0;
+    foreach ($old_leads as $lead) {
+        wp_delete_post($lead->ID, true);
+        $count++;
+    }
+    
+    // Update the last run time
+    update_option('act_last_cleanup_time', time());
+    
+    wp_send_json_success(['count' => $count]);
+});
+
+
 
 /**
  * Convert a timestamp to Bangladesh time
