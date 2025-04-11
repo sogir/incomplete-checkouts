@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: Abandoned Checkout Tracker for WooCommerce
+ * Plugin Name: Incomplete Checkouts for WooCommerce
  * Description: Tracks WooCommerce checkout entries and stores details of users who didn't complete their order.
- * Version: 1.5
+ * Version: 1.6
  * Author: Sogir Mahmud
  */
 
@@ -561,76 +561,6 @@ add_action('wp_ajax_bulk_delete_abandoned_leads', function () {
     wp_send_json_success(['deleted' => $deleted_count]);
 });
 
-// Export selected checkouts
-add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'abandon_note_nonce')) {
-        wp_die('Security check failed');
-    }
-
-    if (!isset($_POST['lead_ids']) || !is_array($_POST['lead_ids'])) {
-        wp_die('No leads selected');
-    }
-
-    $lead_ids = array_map('intval', $_POST['lead_ids']);
-    
-    // Set headers for CSV download
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="selected-abandoned-checkouts.csv"');
-
-    $output = fopen('php://output', 'w');
-
-    // Add the CSV header row
-    fputcsv($output, [        
-        'Date',
-        'Name',
-        'Phone',
-        'Address',
-        'State',
-        'IP Address',
-        'Subtotal',
-        'Products',
-        'Status',
-        'Note'
-    ]);
-
-    // Loop through the selected leads and add rows to the CSV
-    foreach ($lead_ids as $id) {
-        if (get_post_type($id) !== 'abandoned_lead') {
-            continue;
-        }
-
-        // Convert state code to state name
-        $state_code = get_post_meta($id, 'state', true);
-        $country_code = 'BD';
-        $states = WC()->countries->get_states($country_code);
-        $state = isset($states[$state_code]) ? $states[$state_code] : 'Unknown';
-
-        // Get the status
-        $status = get_post_meta($id, 'status', true) === '✅' ? 'Confirmed' : 'Pending';
-        
-        // Always get timestamp as integer and convert for display
-        $timestamp = intval(get_post_meta($id, 'timestamp', true));
-        $timestamp_readable = act_convert_to_bangladesh_time($timestamp);
-
-        // Add the row to the CSV
-        fputcsv($output, [            
-            $timestamp_readable,
-            get_post_meta($id, 'first_name', true) . ' ' . get_post_meta($id, 'last_name', true),
-            get_post_meta($id, 'phone', true),
-            get_post_meta($id, 'address', true),
-            $state,
-            get_post_meta($id, 'ip_address', true),
-            get_post_meta($id, 'subtotal', true),
-            get_post_meta($id, 'products', true),
-            $status,
-            get_post_meta($id, 'note', true)
-        ]);
-    }
-
-    fclose($output);
-    exit;
-});
-
 
 // Scheduled event
 
@@ -931,7 +861,7 @@ add_action('admin_post_export_abandoned_checkouts', function () {
 
     // Set headers for CSV download
     header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="abandoned-checkouts.csv"');
+    header('Content-Disposition: attachment; filename="incomplete-checkouts.csv"');
 
     $output = fopen('php://output', 'w');
 
@@ -999,7 +929,7 @@ add_action('wp_ajax_export_selected_abandoned_checkouts', function () {
     
     // Set headers for CSV download
     header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="selected-abandoned-checkouts.csv"');
+    header('Content-Disposition: attachment; filename="selected-incomplete-checkouts.csv"');
 
     $output = fopen('php://output', 'w');
 
