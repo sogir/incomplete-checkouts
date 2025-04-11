@@ -495,7 +495,7 @@ function render_abandoned_analytics_page() {
     // Render the page
     ?>
     <div class="wrap">
-        <h1>Abandoned Checkout Analytics</h1>
+    <h1>Incomplete Checkout Analytics</h1>
         
         <div class="analytics-container">
             <!-- Summary Cards -->
