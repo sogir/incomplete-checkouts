@@ -396,8 +396,38 @@ function get_abandoned_checkout_rate() {
         }
     }
     
+    // Get stored analytics data for deleted leads
+    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', [
+        'one_day_total' => 0,
+        'one_day_success' => 0,
+        'seven_day_total' => 0,
+        'seven_day_success' => 0,
+        'thirty_day_total' => 0,
+        'thirty_day_success' => 0,
+        'all_time_total' => 0,
+        'all_time_success' => 0,
+        'one_day_revenue' => 0,
+        'seven_day_revenue' => 0,
+        'thirty_day_revenue' => 0,
+        'all_time_revenue' => 0
+    ]);
+    
+    // Add deleted leads data to recovery data
+    $recovery_data['one_day']['count'] += $deleted_analytics['one_day_success'];
+    $recovery_data['one_day']['value'] += isset($deleted_analytics['one_day_revenue']) ? $deleted_analytics['one_day_revenue'] : 0;
+    
+    $recovery_data['seven_day']['count'] += $deleted_analytics['seven_day_success'];
+    $recovery_data['seven_day']['value'] += isset($deleted_analytics['seven_day_revenue']) ? $deleted_analytics['seven_day_revenue'] : 0;
+    
+    $recovery_data['thirty_day']['count'] += $deleted_analytics['thirty_day_success'];
+    $recovery_data['thirty_day']['value'] += isset($deleted_analytics['thirty_day_revenue']) ? $deleted_analytics['thirty_day_revenue'] : 0;
+    
+    $recovery_data['all_time']['count'] += $deleted_analytics['all_time_success'];
+    $recovery_data['all_time']['value'] += isset($deleted_analytics['all_time_revenue']) ? $deleted_analytics['all_time_revenue'] : 0;
+    
     return $recovery_data;
 }
+
 
 
 
@@ -845,6 +875,8 @@ function track_deleted_lead($lead_id) {
     
     $timestamp = get_post_meta($lead_id, 'timestamp', true);
     $status = get_post_meta($lead_id, 'status', true);
+    $subtotal = get_post_meta($lead_id, 'subtotal', true);
+    $subtotal = floatval($subtotal);
     
     if (empty($timestamp)) return;
     
@@ -867,30 +899,38 @@ function track_deleted_lead($lead_id) {
         'thirty_day_success' => 0,
         'all_time_total' => 0,
         'all_time_success' => 0,
+        'one_day_revenue' => 0,
+        'seven_day_revenue' => 0,
+        'thirty_day_revenue' => 0,
+        'all_time_revenue' => 0
     ]);
     
     // Update analytics based on lead timestamp
     $deleted_analytics['all_time_total']++;
     if ($is_success) {
         $deleted_analytics['all_time_success']++;
+        $deleted_analytics['all_time_revenue'] += $subtotal;
     }
     
     if ($timestamp >= $thirty_days_ago) {
         $deleted_analytics['thirty_day_total']++;
         if ($is_success) {
             $deleted_analytics['thirty_day_success']++;
+            $deleted_analytics['thirty_day_revenue'] += $subtotal;
         }
         
         if ($timestamp >= $seven_days_ago) {
             $deleted_analytics['seven_day_total']++;
             if ($is_success) {
                 $deleted_analytics['seven_day_success']++;
+                $deleted_analytics['seven_day_revenue'] += $subtotal;
             }
             
             if ($timestamp >= $one_day_ago) {
                 $deleted_analytics['one_day_total']++;
                 if ($is_success) {
                     $deleted_analytics['one_day_success']++;
+                    $deleted_analytics['one_day_revenue'] += $subtotal;
                 }
             }
         }
@@ -899,6 +939,7 @@ function track_deleted_lead($lead_id) {
     // Save updated analytics
     update_option('abandoned_checkout_deleted_analytics', $deleted_analytics);
 }
+
 
 
 // Hook into lead deletion to track analytics
@@ -932,11 +973,16 @@ function cleanup_abandoned_analytics() {
         'thirty_day_success' => 0,
         'all_time_total' => 0,
         'all_time_success' => 0,
+        'one_day_revenue' => 0,
+        'seven_day_revenue' => 0,
+        'thirty_day_revenue' => 0,
+        'all_time_revenue' => 0
     ]);
     
     // Reset daily stats (they'll be older than 24 hours now)
     $deleted_analytics['one_day_total'] = 0;
     $deleted_analytics['one_day_success'] = 0;
+    $deleted_analytics['one_day_revenue'] = 0;
     
     // Save updated analytics
     update_option('abandoned_checkout_deleted_analytics', $deleted_analytics);
