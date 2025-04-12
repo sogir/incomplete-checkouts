@@ -396,37 +396,43 @@ function get_abandoned_checkout_rate() {
         }
     }
     
-    // Get stored analytics data for deleted leads
-    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', [
-        'one_day_total' => 0,
+    // Get stored analytics data for deleted leads with default values
+    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', []);
+    
+    // Ensure all fields exist with defaults
+    $default_fields = [
         'one_day_success' => 0,
-        'seven_day_total' => 0,
-        'seven_day_success' => 0,
-        'thirty_day_total' => 0,
-        'thirty_day_success' => 0,
-        'all_time_total' => 0,
-        'all_time_success' => 0,
         'one_day_revenue' => 0,
+        'seven_day_success' => 0,
         'seven_day_revenue' => 0,
+        'thirty_day_success' => 0,
         'thirty_day_revenue' => 0,
-        'all_time_revenue' => 0
-    ]);
+        'all_time_success' => 0,
+        'all_time_revenue' => 0,
+    ];
+    
+    foreach ($default_fields as $field => $default) {
+        if (!isset($deleted_analytics[$field])) {
+            $deleted_analytics[$field] = $default;
+        }
+    }
     
     // Add deleted leads data to recovery data
     $recovery_data['one_day']['count'] += $deleted_analytics['one_day_success'];
-    $recovery_data['one_day']['value'] += isset($deleted_analytics['one_day_revenue']) ? $deleted_analytics['one_day_revenue'] : 0;
+    $recovery_data['one_day']['value'] += $deleted_analytics['one_day_revenue'];
     
     $recovery_data['seven_day']['count'] += $deleted_analytics['seven_day_success'];
-    $recovery_data['seven_day']['value'] += isset($deleted_analytics['seven_day_revenue']) ? $deleted_analytics['seven_day_revenue'] : 0;
+    $recovery_data['seven_day']['value'] += $deleted_analytics['seven_day_revenue'];
     
     $recovery_data['thirty_day']['count'] += $deleted_analytics['thirty_day_success'];
-    $recovery_data['thirty_day']['value'] += isset($deleted_analytics['thirty_day_revenue']) ? $deleted_analytics['thirty_day_revenue'] : 0;
+    $recovery_data['thirty_day']['value'] += $deleted_analytics['thirty_day_revenue'];
     
     $recovery_data['all_time']['count'] += $deleted_analytics['all_time_success'];
-    $recovery_data['all_time']['value'] += isset($deleted_analytics['all_time_revenue']) ? $deleted_analytics['all_time_revenue'] : 0;
+    $recovery_data['all_time']['value'] += $deleted_analytics['all_time_revenue'];
     
     return $recovery_data;
 }
+
 
 
 
@@ -889,21 +895,30 @@ function track_deleted_lead($lead_id) {
     $seven_days_ago = $current_time - (7 * 24 * 60 * 60);
     $thirty_days_ago = $current_time - (30 * 24 * 60 * 60);
     
-    // Get stored analytics
-    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', [
+    // Get stored analytics with default values for all fields
+    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', []);
+    
+    // Ensure all fields exist with defaults
+    $default_fields = [
         'one_day_total' => 0,
         'one_day_success' => 0,
+        'one_day_revenue' => 0,
         'seven_day_total' => 0,
         'seven_day_success' => 0,
+        'seven_day_revenue' => 0,
         'thirty_day_total' => 0,
         'thirty_day_success' => 0,
+        'thirty_day_revenue' => 0,
         'all_time_total' => 0,
         'all_time_success' => 0,
-        'one_day_revenue' => 0,
-        'seven_day_revenue' => 0,
-        'thirty_day_revenue' => 0,
-        'all_time_revenue' => 0
-    ]);
+        'all_time_revenue' => 0,
+    ];
+    
+    foreach ($default_fields as $field => $default) {
+        if (!isset($deleted_analytics[$field])) {
+            $deleted_analytics[$field] = $default;
+        }
+    }
     
     // Update analytics based on lead timestamp
     $deleted_analytics['all_time_total']++;
@@ -942,6 +957,7 @@ function track_deleted_lead($lead_id) {
 
 
 
+
 // Hook into lead deletion to track analytics
 add_action('before_delete_post', function($post_id): void {
     if (get_post_type($post_id) === 'abandoned_lead') {
@@ -957,27 +973,30 @@ if (!wp_next_scheduled('abandoned_checkout_analytics_cleanup')) {
 add_action('abandoned_checkout_analytics_cleanup', 'cleanup_abandoned_analytics');
 
 function cleanup_abandoned_analytics() {
-    // Get current time
-    $current_time = time();
-    $one_day_ago = $current_time - (24 * 60 * 60);
-    $seven_days_ago = $current_time - (7 * 24 * 60 * 60);
-    $thirty_days_ago = $current_time - (30 * 24 * 60 * 60);
+    // Get stored analytics with default values
+    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', []);
     
-    // Get stored analytics
-    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', [
+    // Ensure all fields exist with defaults
+    $default_fields = [
         'one_day_total' => 0,
         'one_day_success' => 0,
+        'one_day_revenue' => 0,
         'seven_day_total' => 0,
         'seven_day_success' => 0,
+        'seven_day_revenue' => 0,
         'thirty_day_total' => 0,
         'thirty_day_success' => 0,
+        'thirty_day_revenue' => 0,
         'all_time_total' => 0,
         'all_time_success' => 0,
-        'one_day_revenue' => 0,
-        'seven_day_revenue' => 0,
-        'thirty_day_revenue' => 0,
-        'all_time_revenue' => 0
-    ]);
+        'all_time_revenue' => 0,
+    ];
+    
+    foreach ($default_fields as $field => $default) {
+        if (!isset($deleted_analytics[$field])) {
+            $deleted_analytics[$field] = $default;
+        }
+    }
     
     // Reset daily stats (they'll be older than 24 hours now)
     $deleted_analytics['one_day_total'] = 0;
@@ -987,3 +1006,38 @@ function cleanup_abandoned_analytics() {
     // Save updated analytics
     update_option('abandoned_checkout_deleted_analytics', $deleted_analytics);
 }
+
+
+function migrate_abandoned_analytics_data() {
+    // Check if migration has been done
+    $migration_done = get_option('abandoned_analytics_revenue_migration_done', false);
+    if ($migration_done) {
+        return;
+    }
+    
+    // Get existing analytics data
+    $deleted_analytics = get_option('abandoned_checkout_deleted_analytics', []);
+    
+    // Add revenue fields if they don't exist
+    if (!isset($deleted_analytics['one_day_revenue'])) {
+        $deleted_analytics['one_day_revenue'] = 0;
+    }
+    if (!isset($deleted_analytics['seven_day_revenue'])) {
+        $deleted_analytics['seven_day_revenue'] = 0;
+    }
+    if (!isset($deleted_analytics['thirty_day_revenue'])) {
+        $deleted_analytics['thirty_day_revenue'] = 0;
+    }
+    if (!isset($deleted_analytics['all_time_revenue'])) {
+        $deleted_analytics['all_time_revenue'] = 0;
+    }
+    
+    // Save updated analytics
+    update_option('abandoned_checkout_deleted_analytics', $deleted_analytics);
+    
+    // Mark migration as done
+    update_option('abandoned_analytics_revenue_migration_done', true);
+}
+
+// Run migration when plugin is loaded
+add_action('plugins_loaded', 'migrate_abandoned_analytics_data');
