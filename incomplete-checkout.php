@@ -1,10 +1,15 @@
 <?php
 /**
- * Plugin Name: Incomplete Checkouts for WooCommerce
- * Description: Tracks WooCommerce checkout entries and stores details of users who didn't complete their order.
+ * Plugin Name: Incomplete Checkouts
+ * Plugin URI: https://ridwa.com/incomplete-checkouts/
+ * Description: A powerful tool for WooCommerce store owners to track incomplete checkout entries. This plugin helps you identify users who started the checkout process but didn't complete their orders, enabling you to follow up and recover lost sales effectively.
  * Version: 1.6
- * Author: Sogir Mahmud
+ * Author: Ridwa.com
+ * Author URI: https://ridwa.com
+ * License: GPL-2.0+
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
+
 
 if (!defined('ABSPATH')) exit;
 
